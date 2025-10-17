@@ -1,1 +1,1 @@
-Commit 60: Improve accessibility
+Commit 60: Security fix
