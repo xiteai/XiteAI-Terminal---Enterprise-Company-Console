@@ -1,1 +1,1 @@
-Commit 4: Add validation
+Commit 4: Update API documentation
