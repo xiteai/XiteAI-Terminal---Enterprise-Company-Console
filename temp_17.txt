@@ -1,1 +1,1 @@
-Commit 17: Improve accessibility
+Commit 17: Add validation
