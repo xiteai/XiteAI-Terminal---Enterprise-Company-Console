@@ -1,1 +1,1 @@
-Commit 160: Update README
+Commit 160: Add authentication module
