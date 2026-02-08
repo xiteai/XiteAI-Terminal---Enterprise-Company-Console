@@ -1,1 +1,1 @@
-Commit 110: Improve security
+Commit 110: Database migration
