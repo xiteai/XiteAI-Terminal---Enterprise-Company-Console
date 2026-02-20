@@ -1,1 +1,1 @@
-Commit 101: Fix typo
+Commit 101: Update environment variables
