@@ -1,1 +1,1 @@
-Commit 20: Security fix
+Commit 20: Fix CSS issues
