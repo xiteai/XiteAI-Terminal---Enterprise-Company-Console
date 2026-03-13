@@ -1,1 +1,1 @@
-Commit 39: Update styles
+Commit 39: Update README
