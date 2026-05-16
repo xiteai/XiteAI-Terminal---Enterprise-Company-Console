@@ -1,1 +1,1 @@
-Commit 31: Improve accessibility
+Commit 31: Add caching
