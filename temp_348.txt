@@ -1,0 +1,1 @@
+Commit 348: Add logging
