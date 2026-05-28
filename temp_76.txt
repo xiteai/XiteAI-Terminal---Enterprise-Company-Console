@@ -1,1 +1,1 @@
-Commit 76: Improve accessibility
+Commit 76: Update styles
