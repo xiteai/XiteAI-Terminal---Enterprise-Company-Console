@@ -1,1 +1,1 @@
-Commit 7: Fix login bug
+Commit 7: Update styles
