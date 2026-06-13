@@ -1,1 +1,1 @@
-Commit 113: Add API endpoint
+Commit 113: Refactor database queries
