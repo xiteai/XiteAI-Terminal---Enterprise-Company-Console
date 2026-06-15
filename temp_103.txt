@@ -1,1 +1,1 @@
-Commit 103: Add authentication module
+Commit 103: Fix login bug
