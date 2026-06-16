@@ -1,1 +1,1 @@
-Commit 96: Add caching
+Commit 96: Initial setup
