@@ -1,1 +1,1 @@
-Commit 2: Initial setup
+Commit 2: Improve error messages
