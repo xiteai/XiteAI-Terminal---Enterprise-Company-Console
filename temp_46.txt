@@ -1,1 +1,1 @@
-Commit 46: Add validation
+Commit 46: Update documentation
