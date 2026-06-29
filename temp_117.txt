@@ -1,1 +1,1 @@
-Commit 117: Add authentication module
+Commit 117: Refactor services
