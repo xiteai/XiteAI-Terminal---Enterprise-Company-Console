@@ -1,1 +1,1 @@
-Commit 77: Add comments
+Commit 77: Improve error handling
