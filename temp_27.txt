@@ -1,1 +1,1 @@
-Commit 27: Add notifications
+Commit 27: Fix CSS issues
