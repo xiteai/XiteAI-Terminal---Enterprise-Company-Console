@@ -1,1 +1,1 @@
-Commit 25: Add logging
+Commit 25: Security fix
