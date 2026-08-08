@@ -1,1 +1,1 @@
-Commit 48: Update README
+Commit 48: Improve error messages
