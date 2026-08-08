@@ -1,1 +1,1 @@
-Commit 134: Add new component
+Commit 134: Database migration
