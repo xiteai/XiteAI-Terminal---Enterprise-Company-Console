@@ -1,1 +1,1 @@
-Commit 86: Add support for new feature
+Commit 86: Add API endpoint
