@@ -1,1 +1,1 @@
-Commit 30: Fix memory leak
+Commit 30: Update API documentation
