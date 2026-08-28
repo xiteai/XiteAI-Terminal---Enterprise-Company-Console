@@ -1,1 +1,1 @@
-Commit 125: Add new component
+Commit 125: Add unit tests
