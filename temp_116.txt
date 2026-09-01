@@ -1,1 +1,1 @@
-Commit 116: Add validation
+Commit 116: Improve error handling
