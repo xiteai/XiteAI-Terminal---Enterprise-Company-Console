@@ -1,1 +1,1 @@
-Commit 82: Add caching
+Commit 82: Add integration tests
