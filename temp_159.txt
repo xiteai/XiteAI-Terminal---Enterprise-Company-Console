@@ -1,1 +1,1 @@
-Commit 159: Add comments
+Commit 159: Update API documentation
