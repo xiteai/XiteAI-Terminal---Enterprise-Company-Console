@@ -1,1 +1,0 @@
-Commit 262: Add support for new feature

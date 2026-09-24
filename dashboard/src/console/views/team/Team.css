@@ -1,0 +1,20 @@
+.tm-person { display: flex; align-items: center; gap: 10px; }
+.tm-person-text { display: flex; flex-direction: column; line-height: 1.35; }
+.tm-person b { font-weight: 500; color: var(--ink); }
+.tm-person:hover b { text-decoration: underline; text-decoration-color: #c9c9ce; text-underline-offset: 3px; }
+.tm-person small, .tm-dept, .tm-role small { font-size: 0.75rem; color: var(--muted); }
+.tm-dept { display: block; }
+.tm-role { display: flex; flex-direction: column; line-height: 1.35; font-weight: 500; color: var(--ink); }
+.table .select { min-width: 110px; }
+.table td:has(> .select-bare) { padding-block: 6px; }
+
+.tm-pick { display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.tm-pick-empty { padding: 16px 0; }
+.tm-opt { display: flex; align-items: center; gap: 10px; padding: 9px 8px; text-align: left; border-radius: 8px; }
+.tm-opt:hover { background: var(--hover); }
+.tm-opt.on { background: var(--press); }
+.tm-opt-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.35; }
+.tm-opt-text b { font-size: 0.8125rem; font-weight: 500; color: var(--ink); }
+.tm-opt-text small { font-size: 0.75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tm-check { width: 18px; height: 18px; flex: none; display: grid; place-items: center; border-radius: 5px; box-shadow: inset 0 0 0 1px #c9c9ce; color: #fff; }
+.tm-opt.on .tm-check { background: var(--ink); box-shadow: none; }

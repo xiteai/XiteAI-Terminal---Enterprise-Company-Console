@@ -1,0 +1,31 @@
+/* One solid ink button per screen; everything else is quieter than it. */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border-radius: var(--r); font-weight: 500; white-space: nowrap; user-select: none; letter-spacing: -0.006em;
+  border: 1px solid transparent;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s, transform 0.1s;
+}
+.btn:active:not(:disabled) { transform: scale(0.985); }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn-block { width: 100%; }
+.btn svg { flex: none; }
+
+.btn-sm { height: 28px; padding: 0 10px; font-size: 0.75rem; border-radius: 7px; }
+.btn-md { height: 34px; padding: 0 14px; font-size: 0.8125rem; }
+.btn-lg { height: 42px; padding: 0 20px; font-size: 0.875rem; border-radius: 10px; }
+.btn-icon.btn-sm { width: 28px; padding: 0; }
+.btn-icon.btn-md { width: 34px; padding: 0; }
+
+.btn-primary, .btn-ember { background: var(--ink); color: #fff; }
+.btn-primary:hover:not(:disabled), .btn-ember:hover:not(:disabled) { background: #3a3a3c; }
+
+.btn-ghost { background: var(--surface); border-color: var(--border-2); color: var(--ink); }
+.btn-ghost:hover:not(:disabled) { background: var(--hover); }
+
+.btn-quiet { color: var(--muted); }
+.btn-quiet:hover:not(:disabled) { color: var(--ink); background: var(--hover); }
+
+.btn-danger { background: var(--surface); border-color: var(--border-2); color: var(--bad); }
+.btn-danger:hover:not(:disabled) { background: var(--bad-soft); border-color: var(--bad-line); }
+.btn-danger-solid, .btn-danger.btn-danger-solid { background: var(--bad); border-color: var(--bad); color: #fff; }
+.btn-danger-solid:hover:not(:disabled), .btn-danger.btn-danger-solid:hover:not(:disabled) { background: #a81818; border-color: #a81818; }

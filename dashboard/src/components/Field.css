@@ -1,0 +1,27 @@
+/* Fields: a clear edge, the accent ring on focus, a label you can read. */
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field-label { font-size: 0.8125rem; font-weight: 500; color: var(--ink); }
+.field-label .opt { font-weight: 400; color: var(--subtle); }
+.field-box {
+  display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 11px;
+  background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--r);
+  transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
+}
+.field-box:hover { border-color: #c2c2c7; }
+.field-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.field-box-area { align-items: flex-start; }
+.field-input { flex: 1; min-width: 0; height: 34px; border: none; outline: none; background: transparent; font-size: 0.8125rem; color: var(--ink); }
+.field-input:disabled { color: var(--muted); }
+textarea.field-input { height: auto; min-height: 96px; padding: 9px 0; resize: vertical; line-height: 1.5; }
+.field-input::placeholder { color: var(--subtle); }
+.field-icon { color: var(--subtle); flex: none; }
+.field-affix { color: var(--muted); font-size: 0.8125rem; white-space: nowrap; }
+.field-note { font-size: 0.75rem; color: var(--muted); }
+.field-error .field-box { border-color: var(--bad); }
+.field-error .field-box:focus-within { box-shadow: 0 0 0 3px rgba(200, 30, 30, 0.16); }
+.field-note-error { color: var(--bad); }
+
+/* A search field with an icon sits on a quiet fill instead of an edge. */
+.field-search .field-box { background: var(--track); border-color: transparent; }
+.field-search .field-box:hover { border-color: transparent; background: #eaeaed; }
+.field-search .field-box:focus-within { background: var(--surface); border-color: var(--border-2); }

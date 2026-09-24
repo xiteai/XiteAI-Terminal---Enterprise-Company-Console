@@ -1,0 +1,8 @@
+.eb {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  max-width: 46ch; margin: 48px auto; padding: 24px; color: var(--muted);
+}
+.eb > svg { color: var(--bad); margin-bottom: 4px; }
+.eb-title { font-size: 1rem; font-weight: 600; color: var(--ink); }
+.eb-text { line-height: 1.5; }
+.eb-buttons { display: flex; gap: 8px; margin-top: 8px; }

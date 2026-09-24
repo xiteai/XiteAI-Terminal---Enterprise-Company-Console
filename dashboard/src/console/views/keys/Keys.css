@@ -1,0 +1,19 @@
+.keys-callout { margin-bottom: 24px; }
+.keys-prov b { display: block; font-weight: 500; color: var(--ink); }
+.keys-prov span { font-size: 0.75rem; color: var(--muted); }
+
+.keys-history { list-style: none; }
+.keys-history li { display: grid; grid-template-columns: 110px 1fr auto; gap: 16px; align-items: baseline; padding: 10px 0; border-bottom: 1px solid var(--divider); font-size: 0.8125rem; }
+.keys-history li:last-child { border-bottom: none; }
+.keys-history b { font-weight: 500; color: var(--ink); }
+.keys-when { color: var(--muted); }
+.keys-live { font-size: 0.75rem; color: var(--muted); }
+.keys-refused { font-size: 0.75rem; font-weight: 500; color: var(--bad); }
+
+.keys-form { display: grid; gap: 16px; }
+.keys-note { font-size: 0.8125rem; color: var(--ink); font-weight: 500; }
+
+@media (max-width: 640px) {
+  .keys-history li { grid-template-columns: 1fr auto; }
+  .keys-when { grid-column: 1 / -1; }
+}

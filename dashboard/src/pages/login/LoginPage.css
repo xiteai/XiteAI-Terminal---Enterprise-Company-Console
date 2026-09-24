@@ -1,0 +1,10 @@
+/* Sign in: one narrow column in the middle of the page. No card. */
+.login-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: 48px 16px 96px; }
+.login-card { width: min(340px, 100%); display: flex; flex-direction: column; gap: 16px; }
+.login-logo { width: 36px; height: 36px; object-fit: contain; margin-bottom: 10px; }
+.login-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.login-head p { font-size: 0.875rem; color: var(--muted); }
+.login-error { display: flex; align-items: center; gap: 8px; color: var(--bad); font-size: 0.8125rem; }
+.login-error svg { flex: none; }
+.login-foot { margin-top: 8px; text-align: center; font-size: 0.8125rem; color: var(--muted); }
+.login-note { font-size: 0.75rem; color: var(--subtle); }

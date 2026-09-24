@@ -1,0 +1,18 @@
+/* Tags are rare and colourless: small type on a faint outline, for the few
+   labels that must stand apart from a line of text. */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px;
+  border-radius: var(--r-xs); font-size: 0.6875rem; font-weight: 500; white-space: nowrap; line-height: 1; letter-spacing: 0.005em;
+  color: var(--muted); box-shadow: inset 0 0 0 1px var(--border);
+}
+.badge svg { flex: none; }
+.badge-ember, .badge-accent, .badge-warn { color: var(--ink); box-shadow: inset 0 0 0 1px var(--border-2); }
+.badge-bad { color: var(--bad); box-shadow: inset 0 0 0 1px var(--bad-line); }
+
+/* A status is a word. Fine reads grey; needs-attention reads ink and a
+   little heavier; broken reads red. No dots. */
+.status { white-space: nowrap; color: var(--muted); }
+.status-warn { color: var(--ink); font-weight: 500; }
+.status-bad { color: var(--bad); font-weight: 500; }
+
+.dot-pulse { animation: none; }

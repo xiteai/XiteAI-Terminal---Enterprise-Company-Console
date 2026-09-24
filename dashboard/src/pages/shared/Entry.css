@@ -1,0 +1,31 @@
+.entry { min-height: 100vh; display: flex; flex-direction: column; background: var(--surface); }
+
+.en { position: sticky; top: 0; z-index: 20; background: rgba(255, 255, 255, 0.86); border-bottom: 1px solid var(--border); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
+.en-bar { max-width: 1128px; height: 52px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; gap: 28px; }
+.en-brand { border-radius: var(--r-sm); }
+.en-links { display: flex; gap: 22px; }
+.en-link { font-size: 0.8125rem; color: var(--muted); transition: color 0.15s; }
+.en-link:hover { color: var(--ink); }
+.en-cta { margin-left: auto; display: flex; align-items: center; gap: 18px; }
+.en-cta .plain { font-size: 0.8125rem; color: var(--text); transition: color 0.15s; }
+.en-cta .plain:hover { color: var(--ink); }
+.en-cta .ink { height: 28px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 14px; background: var(--ink); color: #fff; font-size: 0.75rem; font-weight: 500; transition: background-color 0.15s; }
+.en-cta .ink:hover { background: #38383b; }
+
+.entry-main { width: 100%; max-width: 1128px; margin: 0 auto; padding: 56px 24px 80px; }
+
+/* label / value rows */
+.rows { display: flex; flex-direction: column; }
+.rows > div { display: flex; justify-content: space-between; align-items: baseline; gap: 20px; padding: 10px 0; border-bottom: 1px solid var(--divider); }
+.rows > div:last-child { border-bottom: none; }
+.rows dt { font-size: 0.8125rem; color: var(--muted); }
+.rows dd { font-size: 0.8125rem; font-weight: 500; color: var(--ink); text-align: right; }
+
+.entry-foot { margin-top: auto; border-top: 1px solid var(--border); }
+.entry-foot-in { max-width: 1128px; margin: 0 auto; padding: 18px 24px 22px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 0.75rem; color: var(--subtle); }
+
+@media (max-width: 760px) {
+  .en-links { display: none; }
+  .en-bar { padding: 0 16px; }
+  .entry-main { padding: 32px 16px 56px; }
+}

@@ -1,1 +1,0 @@
-Commit 280: Fix CSS issues

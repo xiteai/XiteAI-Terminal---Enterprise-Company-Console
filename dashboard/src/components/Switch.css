@@ -1,0 +1,26 @@
+.switch {
+  --w: 38px; --h: 22px; --k: 18px;
+  position: relative; width: var(--w); height: var(--h); border-radius: 99px; flex: none;
+  background: #e5e5ea; transition: background-color 0.22s var(--ease);
+}
+.switch-sm { --w: 32px; --h: 19px; --k: 15px; }
+.switch.on { background: var(--accent); }
+.switch:disabled { opacity: 0.5; cursor: default; }
+.switch-knob {
+  position: absolute; top: calc((var(--h) - var(--k)) / 2); left: calc((var(--h) - var(--k)) / 2);
+  width: var(--k); height: var(--k); border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 0 0 0.5px rgba(0, 0, 0, 0.04); transition: transform 0.26s var(--ease);
+}
+.switch.on .switch-knob { transform: translateX(calc(var(--w) - var(--h))); }
+
+/* A checkbox, for grids of yes/no where a row of switches would shout. */
+.check {
+  width: 18px; height: 18px; flex: none; display: grid; place-items: center; border-radius: 5px; color: #fff;
+  background: var(--surface); box-shadow: inset 0 0 0 1px #c7c7cc; transition: background-color 0.15s, box-shadow 0.15s;
+}
+.check:hover:not(:disabled) { box-shadow: inset 0 0 0 1px #aeaeb2; }
+.check.on { background: var(--accent); box-shadow: none; }
+.check.on:hover:not(:disabled) { background: var(--accent-hover); }
+.check:disabled { opacity: 0.5; cursor: default; }
+.check svg { opacity: 0; transform: scale(0.6); transition: opacity 0.15s, transform 0.2s var(--ease); }
+.check.on svg { opacity: 1; transform: scale(1); }

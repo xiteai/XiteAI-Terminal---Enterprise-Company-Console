@@ -1,0 +1,76 @@
+/* Charts in black and grey: hairline grid, small ticks, ink for the one
+   thing a chart is about, grey for everything else. */
+.viz { position: relative; width: 100%; }
+.viz svg { overflow: visible; }
+.viz svg:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+.viz-grid { stroke: var(--viz-grid); stroke-width: 1; shape-rendering: crispEdges; }
+.viz-base { stroke: var(--viz-axis); stroke-width: 1; shape-rendering: crispEdges; }
+.viz-tick { fill: var(--subtle); font-family: var(--sans); font-size: 11px; }
+.viz-line { fill: none; stroke: var(--viz-accent); stroke-width: 1.75; stroke-linejoin: round; stroke-linecap: round; }
+.viz-area { fill: var(--viz-accent); opacity: 0.045; }
+.viz-dot { fill: var(--viz-accent); }
+.viz-ring { fill: var(--surface); }
+.viz-cross { stroke: var(--ink); stroke-width: 1; opacity: 0.2; }
+.viz-endlabel { fill: var(--ink); font-family: var(--sans); font-size: 12px; font-weight: 600; }
+.viz-empty { color: var(--muted); font-size: 0.8125rem; padding: 8px 0; }
+
+.viz-tip {
+  position: absolute; z-index: 5; pointer-events: none;
+  display: flex; flex-direction: column; gap: 1px; padding: 8px 11px;
+  background: var(--glass); border-radius: 10px; box-shadow: var(--shadow-pop); white-space: nowrap;
+  -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+}
+.viz-tip strong { font-size: 1rem; font-weight: 600; color: var(--ink); letter-spacing: -0.02em; }
+.viz-tip span { font-size: 0.75rem; color: var(--muted); }
+.viz-tip em { font-size: 0.6875rem; font-style: normal; color: var(--subtle); }
+
+.viz-toggle { font-size: 0.75rem; font-weight: 500; color: var(--subtle); padding: 3px 0; transition: color 0.15s; }
+.viz-toggle:hover, .viz-toggle.on { color: var(--ink); }
+.viz-table-wrap { max-height: 340px; overflow: auto; scrollbar-width: thin; }
+.viz-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+.viz-table th { position: sticky; top: 0; text-align: left; padding: 0 0 8px; background: var(--surface); border-bottom: 1px solid var(--border); font-size: 0.75rem; font-weight: 500; color: var(--muted); }
+.viz-table td { padding: 7px 0; border-bottom: 1px solid var(--divider); color: var(--text); }
+.viz-table tr:last-child td { border-bottom: none; }
+.viz-table td.tnum, .viz-table th:not(:first-child) { text-align: right; }
+
+/* ── bars ── */
+.bars { list-style: none; display: flex; flex-direction: column; gap: 11px; }
+.bar-row { display: grid; grid-template-columns: minmax(90px, 34%) 1fr 64px; align-items: center; gap: 16px; }
+.bar-label { font-size: 0.8125rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-track { position: relative; height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; }
+.bar-fill { position: absolute; inset: 0; transform-origin: left center; border-radius: 3px; }
+.bar-accent { background: var(--viz-accent); }
+.bar-muted { background: var(--viz-plain); }
+.bar-plain { background: #48484c; }
+.bar-row.hover .bar-fill { opacity: 0.8; }
+.bar-value { font-size: 0.8125rem; font-weight: 500; color: var(--ink); text-align: right; display: flex; gap: 6px; justify-content: flex-end; font-variant-numeric: tabular-nums; }
+.bar-value em { font-style: normal; font-weight: 400; color: var(--subtle); }
+
+/* ── heatmap: one ink ramp, light to dark ── */
+.heat-grid { display: flex; flex-direction: column; gap: 3px; }
+.heat-row { display: grid; grid-template-columns: 34px repeat(24, minmax(0, 1fr)); gap: 3px; align-items: center; }
+.heat-rowlabel { font-size: 0.6875rem; color: var(--subtle); }
+.heat-cell {
+  aspect-ratio: 1 / 1; min-height: 9px; max-height: 22px; border-radius: 3px;
+  background: color-mix(in srgb, var(--viz-accent) calc(var(--a) * 100%), var(--surface));
+}
+.heat-cell[data-zero] { background: var(--track); }
+.heat-cell.hover { outline: 1.5px solid var(--ink); outline-offset: 1px; }
+.heat-hour { font-size: 0.625rem; color: var(--subtle); white-space: nowrap; }
+.heat-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+.heat-read { font-size: 0.75rem; color: var(--muted); }
+.heat-read strong { color: var(--ink); font-weight: 600; }
+.heat-scale { display: inline-flex; align-items: center; gap: 3px; font-size: 0.6875rem; color: var(--subtle); }
+.heat-scale i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; background: color-mix(in srgb, var(--viz-accent) calc(var(--a) * 100%), var(--surface)); }
+.heat-scale i:first-of-type { margin-left: 6px; }
+.heat-scale i:last-of-type { margin-right: 6px; }
+
+/* ── figures: a label, a big number, the change or one quiet line ── */
+.stat { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-top: 14px; border-top: 1px solid var(--border); }
+.stat-label { font-size: 0.75rem; font-weight: 500; color: var(--muted); }
+.stat-value { font-size: 1.875rem; font-weight: 600; line-height: 1.15; letter-spacing: -0.034em; color: var(--ink); }
+.stat-delta { font-size: 0.75rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.stat-delta .tnum { font-weight: 600; color: var(--ink); }
+.stat-delta.bad .tnum { color: var(--bad); }
+.stat-note { font-size: 0.75rem; color: var(--muted); line-height: 1.45; }
+.spark { display: none; }

@@ -1,0 +1,26 @@
+/* The waiting and set-your-password pages: one calm column, no card. */
+.gate-wrap { flex: 1; display: flex; justify-content: center; align-items: flex-start; padding: 80px 16px 96px; }
+.gate-card { width: min(520px, 100%); display: flex; flex-direction: column; gap: 16px; }
+.gate-narrow { width: min(360px, 100%); }
+.gate-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--border-2); color: var(--ink); margin-bottom: 4px; }
+.gate-icon.bad { color: var(--bad); box-shadow: inset 0 0 0 1px var(--bad-line); }
+.gate-sub { font-size: 0.9375rem; color: var(--muted); line-height: 1.6; }
+.gate-note { padding-left: 14px; border-left: 2px solid var(--border); font-size: 0.875rem; color: var(--text); }
+
+.gate-steps { list-style: none; display: flex; flex-direction: column; margin: 12px 0 4px; }
+.gate-steps li { position: relative; display: flex; align-items: flex-start; gap: 14px; padding-bottom: 18px; }
+.gate-steps li:last-child { padding-bottom: 0; }
+.gate-steps li:not(:last-child)::after { content: ""; position: absolute; left: 10px; top: 24px; bottom: 2px; width: 1px; background: var(--border); }
+.gate-steps li.done:not(:last-child)::after { background: var(--ink); }
+.gate-dot { width: 21px; height: 21px; flex: none; display: grid; place-items: center; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--border-2); background: var(--surface); color: #fff; }
+.gate-steps li.done .gate-dot { background: var(--ink); box-shadow: none; }
+.gate-steps li.current .gate-dot { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.gate-steps li.current .gate-dot::after { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ink); }
+.gate-steps li.bad .gate-dot { background: var(--bad); box-shadow: none; }
+.gate-step-text { display: flex; flex-direction: column; line-height: 1.35; padding-top: 1px; }
+.gate-step-text b { font-size: 0.875rem; font-weight: 500; color: var(--ink); }
+.gate-steps li.next .gate-step-text b { color: var(--muted); font-weight: 400; }
+.gate-step-text small { font-size: 0.75rem; color: var(--muted); }
+.gate-facts { margin-top: 8px; border-top: 1px solid var(--border); }
+.gate-foot { font-size: 0.8125rem; color: var(--muted); }
+@media (max-width: 640px) { .gate-wrap { padding-top: 40px; } }

@@ -1,0 +1,12 @@
+/* A section, not a box: one thin rule across the top, a title, then the
+   content on the page itself. Space and the rule do the grouping. */
+.card { min-width: 0; border-top: 1px solid var(--border); padding-top: 16px; }
+.card-pad { padding-bottom: 0; }
+.card-flush:not(:has(> .card-head)) { border-top: none; padding-top: 0; }
+.card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.card-titles { min-width: 0; }
+.card-title { font-size: 0.875rem; font-weight: 600; line-height: 1.4; letter-spacing: -0.01em; color: var(--ink); }
+.card-sub { margin-top: 2px; font-size: 0.8125rem; color: var(--muted); }
+.card-action { flex: none; display: flex; align-items: center; gap: 8px; }
+.card-flush > .card-head { margin-bottom: 4px; }
+.panel { border-top: 1px solid var(--border); }

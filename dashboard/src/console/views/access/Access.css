@@ -1,0 +1,15 @@
+.ac-wrap { max-height: calc(100vh - 250px); overflow: auto; }
+.ac-wrap table { min-width: 860px; }
+.ac-wrap thead th { position: sticky; top: 0; z-index: 2; background: var(--surface); height: auto; padding-top: 10px; padding-bottom: 10px; }
+.ac-level-h { text-align: center !important; vertical-align: bottom; width: 110px; }
+.ac-level { display: block; font-size: 0.75rem; font-weight: 600; color: var(--ink); }
+.ac-reset { font-size: 0.6875rem; color: var(--subtle); margin-top: 1px; transition: color 0.12s; }
+.ac-reset:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+.ac-group td { padding: 22px 10px 8px !important; font-size: 0.75rem; font-weight: 600; color: var(--ink) !important; border-bottom: 1px solid var(--border) !important; }
+.ac-perm { min-width: 280px; white-space: normal !important; }
+.ac-perm b { display: block; font-weight: 500; font-size: 0.8125rem; color: var(--ink); }
+.ac-perm span { font-size: 0.75rem; color: var(--muted); }
+.ac-cell { text-align: center; }
+.ac-cell-in { position: relative; display: inline-flex; }
+.ac-changed { position: absolute; bottom: -6px; left: 3px; right: 3px; height: 2px; border-radius: 1px; background: var(--ink); }
+.ac-foot { margin-top: 16px; font-size: 0.75rem; color: var(--muted); max-width: 90ch; }

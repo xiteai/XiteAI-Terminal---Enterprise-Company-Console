@@ -1,0 +1,7 @@
+.wordmark { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); }
+.wordmark-logo { object-fit: contain; flex: none; }
+.wordmark-name { display: flex; flex-direction: column; line-height: 1.2; white-space: nowrap; }
+.wordmark-name b { font-size: 0.875rem; font-weight: 600; letter-spacing: -0.014em; color: var(--ink); }
+.wordmark-name small { font-size: 0.6875rem; color: var(--muted); }
+.wordmark-inline .wordmark-name { flex-direction: row; align-items: baseline; gap: 6px; }
+.wordmark-inline .wordmark-name small { font-size: 0.8125rem; font-weight: 400; }

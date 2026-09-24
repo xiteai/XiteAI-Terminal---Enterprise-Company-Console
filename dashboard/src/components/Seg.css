@@ -1,0 +1,13 @@
+/* A segmented control: a sunk track, the chosen option lifted onto white. */
+.seg { display: inline-flex; align-items: center; gap: 0; padding: 2px; border-radius: 9px; background: var(--track); max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.seg-opt { position: relative; flex: none; height: 28px; padding: 0 12px; border-radius: 7px; color: var(--muted); font-weight: 500; transition: color 0.15s; white-space: nowrap; }
+.seg-opt + .seg-opt::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 1px; background: #d2d2d7; transition: opacity 0.15s; }
+.seg-opt.on::before, .seg-opt.on + .seg-opt::before { opacity: 0; }
+.seg-sm .seg-opt { height: 26px; padding: 0 10px; font-size: 0.75rem; }
+.seg-md .seg-opt { font-size: 0.8125rem; }
+.seg-opt:hover { color: var(--ink); }
+.seg-opt.on { color: var(--ink); }
+.seg-pill { position: absolute; inset: 0; background: var(--surface); border-radius: 7px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), 0 0 0 0.5px rgba(0, 0, 0, 0.06); }
+.seg-text { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+.seg-count { font-size: 0.6875rem; font-weight: 500; color: var(--subtle); }
+.seg-opt.on .seg-count { color: var(--muted); }

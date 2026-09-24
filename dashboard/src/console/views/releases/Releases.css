@@ -1,0 +1,35 @@
+/* One ruled list, newest first. A row opens in place to show its notes. */
+.rel-list { list-style: none; display: flex; flex-direction: column; border-top: 1px solid var(--border); }
+.rel { border-bottom: 1px solid var(--border); }
+.rel-head { width: 100%; display: grid; grid-template-columns: 120px minmax(0, 1fr) 200px 16px; align-items: center; gap: 24px; padding: 18px 0; text-align: left; }
+.rel-head:disabled { cursor: default; }
+.rel-head:not(:disabled):hover .rel-headline { text-decoration: underline; text-decoration-color: #c9c9ce; text-underline-offset: 3px; }
+.rel-version { display: flex; flex-direction: column; gap: 1px; }
+.rel-version b { font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
+.rel-version small { font-size: 0.6875rem; font-weight: 500; color: var(--muted); }
+.rel-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.rel-headline { font-size: 0.875rem; font-weight: 500; color: var(--ink); }
+.rel-notes-line { font-size: 0.8125rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rel-adopt { display: flex; flex-direction: column; gap: 7px; }
+.rel-adopt-num { display: flex; justify-content: space-between; gap: 8px; font-size: 0.75rem; color: var(--muted); }
+.rel-adopt-num b { font-weight: 600; color: var(--ink); }
+.rel-adopt-num em { font-style: normal; color: var(--subtle); }
+.rel-meter { display: block; height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
+.rel-meter i { display: block; height: 100%; background: var(--viz-plain); transform-origin: left; border-radius: 2px; }
+.rel.latest .rel-meter i { background: var(--ink); }
+.rel-failed { font-size: 0.75rem; font-weight: 500; color: var(--bad); }
+.rel-caret { color: var(--subtle); }
+.rel-body { overflow: hidden; }
+.rel-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 48px; padding: 4px 0 8px 144px; }
+.rel-sections ul { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding-left: 16px; }
+.rel-sections li { font-size: 0.8125rem; color: var(--text); line-height: 1.55; }
+.rel-sections li::marker { color: #c9c9ce; }
+.rel-safety { margin: 12px 0 24px 144px; padding-top: 12px; border-top: 1px solid var(--divider); font-size: 0.8125rem; color: var(--muted); }
+.rel-body > .rel-sections:last-child { padding-bottom: 24px; }
+@media (max-width: 860px) {
+  .rel-head { grid-template-columns: 1fr 16px; gap: 8px 12px; }
+  .rel-version, .rel-main, .rel-adopt { grid-column: 1; }
+  .rel-caret { grid-column: 2; grid-row: 1; }
+  .rel-sections { grid-template-columns: 1fr; padding-left: 0; }
+  .rel-safety { margin-left: 0; }
+}

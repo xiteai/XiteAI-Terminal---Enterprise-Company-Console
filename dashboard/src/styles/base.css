@@ -1,0 +1,110 @@
+/* Reset, the page ground, and the few type styles every screen shares.
+   Hierarchy comes from size, weight and space. No boxes around sections,
+   no coloured pills, no status dots: a section is a thin rule, a title and
+   its content; a status is a word. */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #root { min-height: 100%; }
+/* The scrollbar's space is always reserved, so moving between a short page
+   and a long one (or a page that is still loading) never slides it sideways.
+   (Edge/WebView2 ignores scrollbar-gutter on the root; overflow-y: scroll is
+   what holds the space.) The track is transparent, so on a short page the
+   reserved strip is invisible; the thumb shows only when there's a scroll. */
+html { -webkit-text-size-adjust: 100%; overflow-y: scroll; scrollbar-width: thin; scrollbar-color: #c9c9ce transparent; }
+body {
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4 { color: var(--ink); font-weight: 600; letter-spacing: -0.014em; text-wrap: balance; }
+p { text-wrap: pretty; }
+button, input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
+button { cursor: pointer; background: none; border: none; }
+a { color: inherit; text-decoration: none; }
+img, svg { display: block; }
+::selection { background: rgba(17, 17, 19, 0.12); color: var(--ink); }
+
+:focus { outline: none; }
+:where(a, button, [tabindex], summary):focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: var(--r-sm); }
+
+/* ── type ─────────────────────────────────────────────────────────────── */
+.t-display { font-size: clamp(2.5rem, 5.2vw, 3.75rem); font-weight: 600; line-height: 1.04; letter-spacing: -0.04em; color: var(--ink); }
+.t-h1 { font-size: 1.75rem; font-weight: 600; line-height: 1.2; letter-spacing: -0.028em; color: var(--ink); }
+.t-h2 { font-size: 1.25rem; font-weight: 600; line-height: 1.3; letter-spacing: -0.02em; color: var(--ink); }
+.t-h3 { font-size: 0.875rem; font-weight: 600; line-height: 1.4; letter-spacing: -0.01em; color: var(--ink); }
+.t-lede { font-size: 1.0625rem; color: var(--muted); line-height: 1.55; max-width: 60ch; letter-spacing: -0.012em; }
+.t-note { font-size: 0.8125rem; color: var(--muted); line-height: 1.5; }
+.eyebrow, .label { display: block; font-size: 0.75rem; font-weight: 500; color: var(--muted); }
+.muted, .t-quiet { color: var(--muted); }
+.faint { color: var(--subtle); }
+/* Codes, versions and references: the same face, with even-width figures. */
+.mono { font-family: var(--sans); font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+.code { font-family: var(--mono); font-size: 0.86em; letter-spacing: 0; }
+.tnum { font-variant-numeric: tabular-nums; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.text-link { color: var(--ink); font-weight: 500; text-decoration: underline; text-decoration-color: #c9c9ce; text-underline-offset: 3px; text-decoration-thickness: 1px; transition: text-decoration-color 0.15s; }
+.text-link:hover { text-decoration-color: var(--ink); }
+.form-error { font-size: 0.8125rem; color: var(--bad); }
+kbd {
+  display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 5px;
+  font-family: var(--sans); font-size: 0.6875rem; font-weight: 500; letter-spacing: 0;
+  background: var(--surface); color: var(--muted); box-shadow: inset 0 0 0 1px var(--border);
+}
+
+/* A status is a word. Something that needs attention is set in ink and a
+   touch heavier; everything fine stays grey. (.dot survives only as an
+   unread marker.) */
+.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ink); flex: none; }
+.dot-good, .dot-muted, .dot-neutral, .dot-info { background: #c9c9ce; }
+.dot-warn, .dot-ember, .dot-accent { background: var(--ink); }
+.dot-bad { background: var(--bad); }
+
+/* ── sections: a thin rule, a title, the content. Never a box. ────────── */
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding-top: 16px; margin-bottom: 16px; border-top: 1px solid var(--border); }
+.section-head h2 { font-size: 0.875rem; font-weight: 600; letter-spacing: -0.01em; }
+.section-head a, .section-head .t-note { font-size: 0.8125rem; }
+
+/* ── tables: every list of records. Rules, not boxes. ─────────────────── */
+.table { overflow-x: auto; margin-inline: -10px; scrollbar-width: thin; }
+.table table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+.table th {
+  text-align: left; white-space: nowrap; padding: 0 10px; height: 36px;
+  border-bottom: 1px solid var(--border); font-size: 0.75rem; font-weight: 500; color: var(--muted); letter-spacing: 0;
+}
+.table td { padding: 12px 10px; border-bottom: 1px solid var(--divider); color: var(--text); white-space: nowrap; vertical-align: middle; }
+.table tbody tr:last-child td { border-bottom: none; }
+.table tbody tr.row-link { cursor: pointer; transition: background-color 0.12s; }
+.table tbody tr.row-link:hover { background: var(--hover); }
+.table tbody tr:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+.table .r { text-align: right; }
+.table .strong { color: var(--ink); font-weight: 500; }
+.table .mono { color: var(--ink); font-weight: 500; }
+
+/* Demo rows say so in small grey type after the name. */
+.demo-tag { margin-left: 7px; font-family: var(--sans); font-size: 0.6875rem; font-weight: 500; letter-spacing: 0.01em; color: var(--subtle); }
+
+/* ── notes: plain text with an icon, no tinted panel ──────────────────── */
+.callout { display: flex; gap: 10px; padding: 12px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); color: var(--text); font-size: 0.8125rem; line-height: 1.55; }
+.callout > svg { flex: none; margin-top: 2px; color: var(--ink); }
+.callout b { color: var(--ink); font-weight: 600; }
+.callout-bad, .callout-bad > svg { color: var(--bad); }
+
+.scroll-y { scrollbar-width: thin; scrollbar-color: #d4d4d8 transparent; }
+
+/* Arriving content fades up once. Done in CSS rather than Framer: CSS holds
+   the end state, where Framer's native opacity animation drops back to
+   invisible for one frame as it finishes. Re-keying the element replays it. */
+.fade-in { animation: fade-in 0.22s var(--ease) both; }
+@keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}

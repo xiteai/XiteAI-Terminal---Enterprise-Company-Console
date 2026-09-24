@@ -1,0 +1,85 @@
+/* XOS1 Terminal design tokens.
+
+   Monochrome. Black, white and a few greys; structure comes from type,
+   spacing and single hairlines, never from boxes, tints or glowing dots.
+   The only colour in the console is red, and only for what destroys
+   something or has gone wrong.
+
+   Every colour on every screen comes from here, so the whole console can be
+   re-tuned from this one file. */
+
+:root {
+  color-scheme: light;
+
+  /* surfaces */
+  --surface: #ffffff;      /* the page */
+  --canvas: #fafafa;       /* the sidebar, quiet fills */
+  --surface-2: #fafafa;
+  --hover: #f5f5f6;
+  --press: #ededef;
+  --track: #f0f0f2;        /* segmented-control and meter tracks */
+  --border: #e6e6e9;       /* hairlines between sections */
+  --border-2: #d4d4d8;     /* edges of controls you type into or press */
+  --divider: #f0f0f2;      /* the lightest rule, between rows */
+
+  /* text */
+  --ink: #111113;          /* headings, numbers, names, anything that matters */
+  --text: #2c2c2f;         /* body */
+  --muted: #6e6e73;        /* secondary (5.1:1 on white) */
+  --subtle: #9a9aa0;       /* hints and placeholders; never the only copy of a fact */
+
+  /* "chosen" is ink, not a colour */
+  --accent: #111113;
+  --accent-hover: #38383b;
+  --accent-soft: #f2f2f4;
+  --accent-ring: rgba(17, 17, 19, 0.1);
+
+  /* red is the one colour: destructive actions and errors */
+  --bad: #c42b1c;
+  --bad-soft: #fcf1f0;
+  --bad-line: #f1d0cc;
+
+  /* status reads as a word; these keep old names working */
+  --good: var(--text);
+  --warn: var(--ink);
+  --info: var(--muted);
+  --good-soft: var(--hover);
+  --warn-soft: var(--hover);
+  --info-soft: var(--hover);
+  --good-line: var(--border);
+  --warn-line: var(--border);
+  --ember: var(--ink);
+  --ember-lit: var(--ink);
+  --ember-soft: var(--accent-soft);
+  --ember-line: var(--border);
+  --steel: var(--muted);
+  --steel-soft: var(--hover);
+  --steel-line: var(--border);
+
+  /* charts: ink carries the one thing the chart is about, grey the rest */
+  --viz-accent: #111113;
+  --viz-plain: #c9c9ce;
+  --viz-muted: #e4e4e7;
+  --viz-grid: #f0f0f2;
+  --viz-axis: #d4d4d8;
+
+  --sans: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+
+  --r-xs: 5px;
+  --r-sm: 6px;             /* sidebar rows, chips */
+  --r: 8px;                /* buttons, inputs */
+  --r-card: 12px;
+  --r-pop: 14px;           /* menus, dialogs, drawers */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --side-w: 232px;
+  --top-h: 52px;
+  --measure: 1160px;
+  --gutter: 48px;
+
+  --shadow-pop: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.05), 0 24px 56px -16px rgba(0, 0, 0, 0.16);
+  --shadow-card: none;
+  --backdrop: rgba(0, 0, 0, 0.18);
+  --glass: rgba(255, 255, 255, 0.86);
+}

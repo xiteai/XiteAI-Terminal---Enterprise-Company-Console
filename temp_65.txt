@@ -1,1 +1,0 @@
-Commit 65: Add new component

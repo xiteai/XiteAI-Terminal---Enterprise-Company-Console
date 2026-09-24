@@ -1,0 +1,5 @@
+.avatar {
+  display: inline-grid; place-items: center; flex: none; border-radius: 50%;
+  font-weight: 600; letter-spacing: 0.01em; color: #48484a; background: #e8e8ed;
+}
+.avatar-founder { color: #fff; background: var(--ink); }

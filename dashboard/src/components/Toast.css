@@ -1,0 +1,14 @@
+.toasts {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 120;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none;
+}
+.toast {
+  pointer-events: auto; display: flex; align-items: center; gap: 10px;
+  max-width: min(520px, calc(100vw - 32px)); padding: 9px 8px 9px 14px;
+  border-radius: 12px; background: rgba(29, 29, 31, 0.92); color: #fff; font-size: 0.8125rem; box-shadow: var(--shadow-pop);
+  -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+}
+.toast > svg:first-child { color: rgba(255, 255, 255, 0.7); flex: none; }
+.toast-bad > svg:first-child { color: #ff8a80; }
+.toast button { color: inherit; opacity: 0.5; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; }
+.toast button:hover { opacity: 1; background: rgba(255, 255, 255, 0.12); }

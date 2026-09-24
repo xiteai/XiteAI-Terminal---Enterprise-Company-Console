@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xos1dashboard.xiteai.com/contract/checkin.schema.json",
+  "title": "XOS1 check-in",
+  "description": "What an XOS1 install sends to POST /api/v1/checkin. The request body is {payload, signature, public_key}: payload is base64 of the UTF-8 JSON below, signature is base64 of the Ed25519 signature over exactly those payload bytes, public_key is base64 of the install's 32-byte Ed25519 public key. The private key never leaves the PC (seal it with Windows DPAPI).",
+  "type": "object",
+  "required": ["v", "hardware_hash", "sent_at", "nonce"],
+  "properties": {
+    "v": { "const": 1, "description": "Contract version." },
+    "hardware_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "sha256 of core/system/device_identity.py's hardware_id. The raw id never leaves the PC."
+    },
+    "sent_at": { "type": "string", "format": "date-time", "description": "UTC. Refused if more than 10 minutes from server time." },
+    "nonce": { "type": "string", "minLength": 16, "maxLength": 64, "description": "Random per check-in. Refused if reused within a day." },
+    "app_version": { "type": "string", "maxLength": 20, "examples": ["1.0.17"] },
+    "os_version": { "type": "string", "maxLength": 60, "examples": ["Windows 11 24H2"] },
+    "device_type": { "type": "string", "maxLength": 20, "examples": ["Laptop", "Desktop", "Tablet"] },
+    "region": { "type": "string", "maxLength": 60, "examples": ["Uttar Pradesh"] },
+    "timezone": { "type": "string", "maxLength": 60, "examples": ["Asia/Kolkata"] },
+    "locale": { "type": "string", "maxLength": 20, "examples": ["en-IN"] },
+    "update_state": { "enum": ["ok", "failed", "pending"] },
+    "crash_count_7d": { "type": "integer", "minimum": 0 },
+    "consent": {
+      "type": "object",
+      "properties": {
+        "profile": { "type": "boolean", "description": "User agreed at setup to share name and age. False clears what the server held." },
+        "usage": { "type": "boolean", "description": "User turned on usage sharing." }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "description": "Sent only when consent.profile is true; ignored otherwise.",
+      "properties": {
+        "name": { "type": "string", "maxLength": 80 },
+        "dob": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "description": "Sent only when consent.usage is true; ignored otherwise.",
+      "properties": {
+        "tools": { "type": "array", "items": { "type": "string", "maxLength": 40 }, "maxItems": 50 }
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,26 @@
+# Secrets: passwords and keys live only here, never in git.
+.env
+.env.*
+!.env.example
+
+# Data: the database holds real people's details.
+data/
+*.db
+*.db-*
+
+# Builds and dependencies
+dashboard/node_modules/
+dashboard/dist/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Leftovers
+server/_old/
+*.log
+.DS_Store
+Thumbs.db
+
+# Screens being built (dev.py builds beside dist/, then swaps them in)
+dashboard/.dist-next-*/
