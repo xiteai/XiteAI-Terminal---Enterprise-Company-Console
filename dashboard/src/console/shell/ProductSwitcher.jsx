@@ -6,7 +6,7 @@ import { cx } from "../../lib/cx.js";
 import Icon from "../../components/Icon.jsx";
 import Popover from "../../components/Popover.jsx";
 import ProductLogo from "../../components/ProductLogo.jsx";
-import NewProductModal from "../views/home/NewProductModal.jsx";
+import NewProductModal from "../views/products/NewProductModal.jsx";
 
 // Which product the sidebar is showing. Switching keeps you on the same kind
 // of page (Support in one product opens Support in the other).

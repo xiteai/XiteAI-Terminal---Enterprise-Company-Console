@@ -3,6 +3,7 @@ import { Link, Navigate, Route, Routes, useParams } from "react-router-dom";
 import { ProductProvider, rememberProduct } from "../../lib/product.jsx";
 import { useSession } from "../../lib/session.jsx";
 import Empty from "../../components/Empty.jsx";
+import Finance from "../views/finance/Finance.jsx";
 import Installs from "../views/installs/Installs.jsx";
 import Overview from "../views/overview/Overview.jsx";
 import Releases from "../views/releases/Releases.jsx";
@@ -36,6 +37,7 @@ export default function ProductArea() {
     <ProductProvider value={ctx}>
       <Routes>
         <Route index element={can("overview") ? <Overview /> : first ? <Navigate to={first.to} replace /> : <Navigate to="/console" replace />} />
+        <Route path="finance" element={<Guard perm="finance.view" fallback={back}><Finance /></Guard>} />
         <Route path="installs/:id?" element={<Guard perm="installs" fallback={back}><Installs /></Guard>} />
         <Route path="releases" element={<Guard perm="releases" fallback={back}><Releases /></Guard>} />
         <Route path="support/:id?" element={<Guard perm="support" fallback={back}><Support /></Guard>} />
