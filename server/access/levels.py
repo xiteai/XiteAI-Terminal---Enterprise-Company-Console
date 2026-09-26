@@ -36,7 +36,7 @@ def new_staff_defaults() -> dict:
     every place that creates a staff row starts from this, then overrides."""
     return {
         "preferred_name": "", "department": "", "employment_type": "", "start_date": "", "reports_to": None,
-        "status": "pending", "source": "signup", "profile_json": "{}", "signup_ip": "", "decided_by": None,
-        "decided_at": None, "decision_note": "", "last_login_at": None, "must_change_pw": False,
-        "totp_secret": "", "totp_pending": "", "code_paused": False, "is_demo": False,
+        "status": "pending", "source": "signup", "profile_json": "{}", "avatar_url": "", "signup_ip": "",
+        "decided_by": None, "decided_at": None, "decision_note": "", "last_login_at": None,
+        "must_change_pw": False, "totp_secret": "", "totp_pending": "", "code_paused": False, "is_demo": False,
     }
