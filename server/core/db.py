@@ -17,17 +17,23 @@ so a transaction can't be joined incorrectly — the only way to be in one is
 to be handed the proxy that `tx()` yields."""
 from __future__ import annotations
 
+import logging
+import socket
+import threading
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from urllib.parse import quote_plus
 
-from pymongo import MongoClient, ReturnDocument
+from pymongo import MongoClient, ReturnDocument, errors
 from pymongo.client_session import ClientSession
 from pymongo.collation import Collation
 from pymongo.collection import Collection
 from pymongo.database import Database
 
 from . import config
+
+log = logging.getLogger("terminal.db")
 
 CASE_INSENSITIVE = Collation(locale="en", strength=2)   # matches SQLite's COLLATE NOCASE; pass as collation=
 
@@ -57,11 +63,128 @@ def _client_uri() -> str:
 _client: MongoClient | None = None
 
 
+# ── finding the cluster, whatever the network's DNS is doing ─────────────────
+#
+# Reaching Atlas takes two kinds of lookup: the SRV record that lists the
+# cluster's servers (dnspython), then each server's address (the operating
+# system's getaddrinfo, i.e. the network's DNS). On this PC's Wi-Fi the ISP's
+# DNS failed the second kind ("getaddrinfo failed") often enough to stop the
+# server starting. So both go to config.MONGO_DNS first, fall back to the
+# network's own DNS (for a network that blocks outside DNS), and every
+# server's last good address is kept for when neither answers. Only the
+# cluster's own host names are touched; TLS still checks the certificate
+# against the real host name, so a wrong answer can't impersonate Atlas.
+
+_system_getaddrinfo = socket.getaddrinfo
+_resolver = None
+_atlas_suffix = ""
+_known: dict[str, tuple[float, list[str]]] = {}         # host -> (fresh until, addresses)
+_known_lock = threading.Lock()
+
+
+def _use_public_dns() -> None:
+    global _resolver, _atlas_suffix
+    if not config.MONGO_DNS:
+        return
+    import dns.exception
+    import dns.resolver
+
+    try:
+        system = dns.resolver.Resolver()                 # the network's own DNS, as Windows has it
+    except dns.exception.DNSException:
+        system = None
+
+    class Resolver(dns.resolver.Resolver):
+        def resolve(self, *args, **kwargs):
+            try:
+                return super().resolve(*args, **kwargs)
+            except (dns.exception.Timeout, dns.resolver.NoNameservers):
+                if system is None:
+                    raise
+                return system.resolve(*args, **kwargs)
+
+    r = Resolver(configure=False)
+    r.nameservers = config.MONGO_DNS
+    r.timeout, r.lifetime = 1.5, 4.0                     # measured ~130 ms when healthy
+    dns.resolver.default_resolver = r                    # pymongo's SRV lookup asks this one
+    _resolver = r
+    if config.MONGO_CLUSTER and not config.MONGO_URI and "." in config.MONGO_CLUSTER:
+        # cluster0.abcde.mongodb.net -> its servers are <name>.abcde.mongodb.net
+        _atlas_suffix = "." + config.MONGO_CLUSTER.split(".", 1)[1].lower()
+        socket.getaddrinfo = _getaddrinfo
+
+
+def _atlas_addresses(host: str) -> list[str]:
+    import dns.exception
+
+    now = time.monotonic()
+    with _known_lock:
+        known = _known.get(host)
+    if known and known[0] > now:
+        return known[1]
+    try:
+        answer = _resolver.resolve(host, "A")
+    except dns.exception.DNSException as e:
+        if known:
+            log.warning("couldn't look up %s (%s); using its last known address", host, type(e).__name__)
+            return known[1]
+        return []
+    found = [r.address for r in answer]
+    with _known_lock:
+        _known[host] = (now + max(60, min(answer.rrset.ttl, 3600)), found)
+    return found
+
+
+def _getaddrinfo(host, port, *args, **kwargs):
+    if isinstance(host, str) and _atlas_suffix and host.lower().endswith(_atlas_suffix):
+        out = []
+        for ip in _atlas_addresses(host):
+            try:
+                out += _system_getaddrinfo(ip, port, *args, **kwargs)   # an address already: no lookup
+            except socket.gaierror:
+                continue
+        if out:
+            return out
+    return _system_getaddrinfo(host, port, *args, **kwargs)
+
+
+_client_lock = threading.Lock()
+
+
 def client() -> MongoClient:
     global _client
     if _client is None:
-        _client = MongoClient(_client_uri(), maxPoolSize=config.MONGO_POOL_SIZE, serverSelectionTimeoutMS=8000)
+        with _client_lock:                            # two first requests at once must not build two pools
+            if _client is None:
+                _use_public_dns()
+                # serverSelectionTimeoutMS 15 s: rides out an Atlas failover or
+                # a slow lookup without hanging a request forever. minPoolSize
+                # keeps a few connections open and ready, so a request doesn't
+                # pay for a DNS lookup and a TLS handshake (seconds on a bad
+                # network) before it can even ask its question.
+                _client = MongoClient(_client_uri(), maxPoolSize=config.MONGO_POOL_SIZE,
+                                      minPoolSize=min(4, config.MONGO_POOL_SIZE), serverSelectionTimeoutMS=15000,
+                                      connectTimeoutMS=10000, retryReads=True, retryWrites=True)
     return _client
+
+
+def wait_until_ready(max_wait_s: float = 600) -> None:
+    """At start: keep asking until the database answers. A network that's
+    still coming up (the laptop just woke, the Wi-Fi is reconnecting) or an
+    Atlas failover is a reason to wait, not to crash. A wrong password isn't:
+    that fails at once."""
+    deadline = time.monotonic() + max_wait_s
+    delay = 2.0
+    while True:
+        try:
+            client().admin.command("ping")
+            return
+        except (errors.ConnectionFailure, errors.ConfigurationError) as e:
+            if time.monotonic() + delay > deadline:
+                raise
+            log.warning("the database isn't reachable yet (%s); trying again in %.0f s", str(e)[:160], delay)
+            time.sleep(delay)
+            delay = min(delay * 2, 30)
 
 
 @contextmanager

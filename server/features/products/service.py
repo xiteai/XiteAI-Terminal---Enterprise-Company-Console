@@ -9,6 +9,7 @@ from fastapi import HTTPException
 
 from ...access import levels
 from ...core import config, db, settings
+from ..installs import store as installs_store
 from ..people.cards import initials
 
 DEFAULT = "xos1"
@@ -37,7 +38,7 @@ def ensure_defaults(conn) -> None:
             "website": "https://xiteai.com", "logo": "xos1-mark.png", "logo_invert": True,
             "latest_version": config.LATEST_VERSION, "status": "live", "is_demo": False, "created_at": db.now_iso(),
         })
-    conn["installs"].update_many({"product_id": 0}, {"$set": {"product_id": pid}})
+    installs_store.run("UPDATE installs SET product_id = ? WHERE product_id = 0", (pid,))
     conn["tickets"].update_many({"product_id": 0}, {"$set": {"product_id": pid}})
     founder = conn["staff"].find_one({"level": "founder", "status": "active"}, {"id": 1}, sort=[("id", 1)])
     if founder:
@@ -73,10 +74,13 @@ def stats(conn, pid: int) -> dict:
     d = settings.demo_filter(conn)
     day, month = db.iso(now - timedelta(days=1)), db.iso(now - timedelta(days=30))
     active_staff_ids = conn["staff"].distinct("id", {"status": "active", **d})
+    demo_sql = installs_store.demo_sql(conn)
     return {
-        "installs": conn["installs"].count_documents({"product_id": pid, **d}),
-        "active_today": conn["installs"].count_documents({"product_id": pid, "last_seen": {"$gte": day}, **d}),
-        "active_month": conn["installs"].count_documents({"product_id": pid, "last_seen": {"$gte": month}, **d}),
+        "installs": installs_store.scalar(f"SELECT COUNT(*) FROM installs WHERE product_id = ?{demo_sql}", (pid,)),
+        "active_today": installs_store.scalar(
+            f"SELECT COUNT(*) FROM installs WHERE product_id = ? AND last_seen >= ?{demo_sql}", (pid, day)),
+        "active_month": installs_store.scalar(
+            f"SELECT COUNT(*) FROM installs WHERE product_id = ? AND last_seen >= ?{demo_sql}", (pid, month)),
         "open_tickets": conn["tickets"].count_documents({"product_id": pid, "status": {"$in": ["open", "in_progress"]},
                                                          **d}),
         "team": conn["product_members"].count_documents({"product_id": pid, "staff_id": {"$in": active_staff_ids}}),

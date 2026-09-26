@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,7 +10,7 @@ from ...access import levels
 from ...core import audit, clock, config, db, notify, settings
 from ...security import mfa
 from ...web.deps import actor, writable
-from . import changes, gitops, history, service, text
+from . import changes, gitops, history, service, store, text
 from .access import Viewer
 
 router = APIRouter(prefix="/api/code", tags=["code"])
@@ -52,16 +53,15 @@ def _need(a: dict, *perms: str) -> None:
 class RepoBody(BaseModel):
     name: str = Field(max_length=80)
     url: str = Field(max_length=300)
-    branch: str = Field(default="main", max_length=100)
+    branch: str = Field(default="", max_length=100)   # blank = use the repository's own default branch
 
 
 @router.get("/repos")
 def repos(a: dict = Depends(member)):
-    with db.connect() as conn:
-        items = [service.repo_card(db.strip(r)) for r in conn["code_repos"].find().sort("id", 1)]
-        return {"items": items,
-                "can_connect": "code.connect" in a["perms"] and not a["previewing"],
-                "can_sync": bool({"code.connect", "code.merge_all"} & a["perms"]) and not a["previewing"]}
+    items = [service.repo_card(r) for r in store.rows("SELECT * FROM code_repos ORDER BY id")]
+    return {"items": items,
+            "can_connect": "code.connect" in a["perms"] and not a["previewing"],
+            "can_sync": bool({"code.connect", "code.merge_all"} & a["perms"]) and not a["previewing"]}
 
 
 @router.post("/repos")
@@ -97,9 +97,9 @@ def accept_rewrite(rid: int, a: dict = Depends(member)):
         with gitops.lock(rid):
             old, new = gitops.accept_remote(rid, row["remote_url"], row["branch"])
             if old != new:
-                service.remap(conn, rid, old, new)
-        conn["code_repos"].update_one({"_id": rid}, {"$set": {"head_sha": new, "remote_sha": new, "held_remote": "",
-                                                              "status_detail": "", "last_sync_at": db.now_iso()}})
+                service.remap(rid, old, new)
+        store.run("UPDATE code_repos SET head_sha = ?, remote_sha = ?, held_remote = '', status_detail = '', "
+                  "last_sync_at = ? WHERE id = ?", (new, new, db.now_iso(), rid))
         audit.record(conn, a, "code.rewrite_accepted", row["name"], f"followed GitHub to {new[:10]}; kept {old[:10]}", a["ip"])
         return service.repo_card(service.repo(conn, rid))
 
@@ -118,22 +118,28 @@ def put_back_history(rid: int, a: dict = Depends(member)):
                 sha = gitops.put_back(rid, row["remote_url"], row["branch"], row["held_remote"])
         except gitops.GitError as e:
             raise HTTPException(502, f"GitHub didn't take it back: {e}")
-        conn["code_repos"].update_one({"_id": rid}, {"$set": {"remote_sha": sha, "held_remote": "", "status_detail": "",
-                                                              "last_sync_at": db.now_iso()}})
+        store.run("UPDATE code_repos SET remote_sha = ?, held_remote = '', status_detail = '', last_sync_at = ? "
+                  "WHERE id = ?", (sha, db.now_iso(), rid))
         audit.record(conn, a, "code.rewrite_reversed", row["name"], f"GitHub put back to {sha[:10]}", a["ip"])
         return service.repo_card(service.repo(conn, rid))
 
 
 @router.delete("/repos/{rid}")
 def disconnect(rid: int, a: dict = Depends(member)):
+    """Also doubles as Cancel: removing a repository that's still being copied
+    from GitHub stops that copy first, so it doesn't keep running (or keep
+    the files locked) after it's gone from the list."""
     writable(a)
     _need(a, "code.connect")
     with db.connect() as conn:
         row = service.repo(conn, rid, ready=False)
+        cancelled = gitops.cancel(rid)
         with gitops.lock(rid):
-            conn["code_repos"].delete_one({"_id": rid})
+            store.run("DELETE FROM code_repos WHERE id = ?", (rid,))   # everything under it goes too
             gitops.remove(rid)
-        audit.record(conn, a, "code.repo_removed", row["name"], "grants, features and change requests removed with it", a["ip"])
+        detail = "cancelled while copying from GitHub" if cancelled else \
+            "grants, features and change requests removed with it"
+        audit.record(conn, a, "code.repo_removed", row["name"], detail, a["ip"])
         return {"ok": True}
 
 
@@ -141,11 +147,10 @@ def disconnect(rid: int, a: dict = Depends(member)):
 def where(cid: int, a: dict = Depends(member)):
     """Which repository a change request belongs to (links carry only its number).
     Declared before the /{rid}/ routes so 'changes' isn't read as a repository id."""
-    with db.connect() as conn:
-        row = conn["code_changes"].find_one({"_id": cid}, {"repo_id": 1})
-        if not row:
-            raise HTTPException(404, "No change request by that number.")
-        return {"repo_id": row["repo_id"]}
+    row = store.one("SELECT repo_id FROM code_changes WHERE id = ?", (cid,))
+    if not row:
+        raise HTTPException(404, "No change request by that number.")
+    return {"repo_id": row["repo_id"]}
 
 
 # ── security: the founder's switches (declared before the /{rid}/ routes) ─────
@@ -200,7 +205,7 @@ def resume(sid: int, a: dict = Depends(member)):
         if not person:
             raise HTTPException(404, "No one by that id.")
         conn["staff"].update_one({"_id": sid}, {"$set": {"code_paused": False}})
-        conn["code_reads"].delete_many({"staff_id": sid})    # a fresh count, or they'd pause again at once
+        store.run("DELETE FROM code_reads WHERE staff_id = ?", (sid,))    # a fresh count, or they'd pause again at once
         audit.record(conn, a, "code.resumed", person["email"], "", a["ip"])
         notify.send(conn, [sid], "code.resumed", "Your code access is back", f"Resumed by {a['display_name']}.",
                     "/console/code")
@@ -218,7 +223,7 @@ def _ctx(conn, rid: int, a: dict):
 def tree(rid: int, a: dict = Depends(member)):
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        return {"repo": service.repo_card(row), "files": service.tree(conn, row, v),
+        return {"repo": service.repo_card(row), "files": service.tree(row, v),
                 "can_request": v.founder or "code.request" in v.perms}
 
 
@@ -258,7 +263,7 @@ class PathBody(BaseModel):
 
 def _protected(conn, row: dict) -> dict:
     names = {r["id"]: r["display_name"] for r in conn["staff"].find({}, {"id": 1, "display_name": 1})}
-    have = [db.strip(r) for r in conn["code_protected"].find({"repo_id": row["id"]}).sort("path", 1)]
+    have = store.rows("SELECT * FROM code_protected WHERE repo_id = ? ORDER BY path", (row["id"],))
     return {"items": [{"path": p["path"], "at": p["added_at"], "by": names.get(p["added_by"], "set up automatically")}
                       for p in have],
             "suggested": [p for p in service.PROTECT_SUGGEST
@@ -283,10 +288,8 @@ def protect(rid: int, body: PathBody, a: dict = Depends(member)):
             raise HTTPException(400, "Pick a folder or a file.")
         if not (service.exists(row, path, folder=True) or service.exists(row, path)):
             raise HTTPException(400, f"There's no folder or file {path}.")
-        if not conn["code_protected"].find_one({"repo_id": rid, "path": path}, {"_id": 1}):
-            pid = db.next_id(conn, "code_protected")
-            conn["code_protected"].insert_one({"_id": pid, "id": pid, "repo_id": rid, "path": path,
-                                               "added_by": a["id"], "added_at": db.now_iso()})
+        store.run("INSERT OR IGNORE INTO code_protected (repo_id, path, added_by, added_at) VALUES (?,?,?,?)",
+                  (rid, path, a["id"], db.now_iso()))
         audit.record(conn, a, "code.protected", f"{row['name']}:{path}", "", a["ip"])
         return _protected(conn, row)
 
@@ -297,7 +300,7 @@ def unprotect(rid: int, path: str, a: dict = Depends(member)):
     _need(a, "code.connect")
     with db.connect() as conn:
         row = service.repo(conn, rid)
-        n = conn["code_protected"].delete_many({"repo_id": rid, "path": path}).deleted_count
+        n = store.run("DELETE FROM code_protected WHERE repo_id = ? AND path = ?", (rid, path)).rowcount
         if n:
             audit.record(conn, a, "code.unprotected", f"{row['name']}:{path}", "", a["ip"])
         return _protected(conn, row)
@@ -384,25 +387,23 @@ def grant(rid: int, body: GrantBody, a: dict = Depends(member)):
         row, v = _ctx(conn, rid, a)
         target = service.target_person(conn, body.staff_id)
         if body.feature_id:
-            f = db.strip(conn["code_features"].find_one({"_id": body.feature_id, "repo_id": rid}))
+            f = store.one("SELECT * FROM code_features WHERE id = ? AND repo_id = ?", (body.feature_id, rid))
             if not f:
                 raise HTTPException(404, "No feature by that id.")
-            items = [{"kind": i["kind"], "path": i["path"]} for i in
-                    conn["code_items"].find({"feature_id": f["id"]}, {"kind": 1, "path": 1})]
+            items = store.rows("SELECT kind, path FROM code_items WHERE feature_id = ?", (f["id"],))
             what = f"feature {f['name']}"
         else:
             items = service.clean_items(row, [i.model_dump() for i in body.items])
             what = "; ".join(service.describe(i) for i in items)[:300]
         service.check_grant_power(conn, v, items, target, body.can_edit)
-        with db.tx(conn) as tconn:
-            gid = db.next_id(tconn, "code_grants")
-            tconn["code_grants"].insert_one({
-                "_id": gid, "id": gid, "repo_id": rid, "staff_id": target["id"], "feature_id": body.feature_id,
-                "can_edit": body.can_edit, "note": body.note.strip(), "granted_by": a["id"], "granted_at": db.now_iso(),
-                "expires_at": _expiry(body.expires_on),
-            })
+        expires = _expiry(body.expires_on)
+        with store.tx() as t:
+            gid = t.run("INSERT INTO code_grants (repo_id, staff_id, feature_id, can_edit, note, granted_by, granted_at, "
+                        "expires_at) VALUES (?,?,?,?,?,?,?,?)",
+                        (rid, target["id"], body.feature_id, int(body.can_edit), body.note.strip(), a["id"],
+                         db.now_iso(), expires)).lastrowid
             if not body.feature_id:
-                service.add_items(tconn, rid, items, grant_id=gid)
+                service.add_items(t, rid, items, grant_id=gid)
         audit.record(conn, a, "code.access_given", target["display_name"],
                      f"{'edit' if body.can_edit else 'read'}: {what}", a["ip"])
         notify.send(conn, [target["id"]], "code.access", f"{a['display_name']} gave you access to code",
@@ -415,17 +416,18 @@ def revoke(rid: int, gid: int, a: dict = Depends(member)):
     writable(a)
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        g = db.strip(conn["code_grants"].find_one({"_id": gid, "repo_id": rid}))
+        g = store.one("SELECT * FROM code_grants WHERE id = ? AND repo_id = ?", (gid, rid))
         if not g:
             raise HTTPException(404, "No grant by that id.")
-        target = db.strip(conn["staff"].find_one({"_id": g["staff_id"]}))
+        target = db.strip(conn["staff"].find_one({"_id": g["staff_id"]})) or \
+            {"display_name": "someone removed", "level": "intern"}
         above = v.founder or levels.outranks(v.level, target["level"])
-        items = service.items_of(conn, feature_id=g["feature_id"]) if g["feature_id"] else service.items_of(conn, grant_id=gid)
+        items = service.items_of(feature_id=g["feature_id"]) if g["feature_id"] else service.items_of(grant_id=gid)
         owns_all = bool(items) and all(v.role_for(i["path"]) == "owner" for i in items)
         if not (v.founder or (above and ("code.revoke" in v.perms or g["granted_by"] == v.id or
                                         ({"code.grant", "code.grant_all"} & v.perms and owns_all)))):
             raise HTTPException(403, "You can't take this access away.")
-        conn["code_grants"].delete_one({"_id": gid})
+        store.run("DELETE FROM code_grants WHERE id = ?", (gid,))     # its own items go with it
         audit.record(conn, a, "code.access_removed", target["display_name"],
                      "; ".join(i["label"] for i in items)[:300], a["ip"])
         return service.access_overview(conn, row, v)
@@ -444,16 +446,17 @@ def new_feature(rid: int, body: FeatureBody, a: dict = Depends(member)):
         name = body.name.strip()
         if len(name) < 2:
             raise HTTPException(400, "Give the feature a name.")
-        if conn["code_features"].find_one({"repo_id": rid, "name": name}, {"_id": 1}):
+        if store.one("SELECT id FROM code_features WHERE repo_id = ? AND name = ?", (rid, name)):
             raise HTTPException(409, "A feature with that name exists.")
         items = service.clean_items(row, [i.model_dump() for i in body.items])
         service.founder_only_inside_protection(v, items, "puts into features")
-        with db.tx(conn) as tconn:
-            fid = db.next_id(tconn, "code_features")
-            tconn["code_features"].insert_one({"_id": fid, "id": fid, "repo_id": rid, "name": name,
-                                               "description": body.description.strip(), "created_by": a["id"],
-                                               "created_at": db.now_iso()})
-            service.add_items(tconn, rid, items, feature_id=fid)
+        try:
+            with store.tx() as t:
+                fid = t.run("INSERT INTO code_features (repo_id, name, description, created_by, created_at) "
+                            "VALUES (?,?,?,?,?)", (rid, name, body.description.strip(), a["id"], db.now_iso())).lastrowid
+                service.add_items(t, rid, items, feature_id=fid)
+        except sqlite3.IntegrityError:
+            raise HTTPException(409, "A feature with that name exists.") from None   # made at the same moment
         audit.record(conn, a, "code.feature_created", name, "; ".join(service.describe(i) for i in items)[:300], a["ip"])
         return service.access_overview(conn, row, v)
 
@@ -464,12 +467,12 @@ def feature_add(rid: int, fid: int, body: ItemsBody, a: dict = Depends(member)):
     _features(a)
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        f = db.strip(conn["code_features"].find_one({"_id": fid, "repo_id": rid}))
+        f = store.one("SELECT * FROM code_features WHERE id = ? AND repo_id = ?", (fid, rid))
         if not f:
             raise HTTPException(404, "No feature by that id.")
         items = service.clean_items(row, [i.model_dump() for i in body.items])
         service.founder_only_inside_protection(v, items, "puts into features")
-        service.add_items(conn, rid, items, feature_id=fid)
+        service.add_items(store, rid, items, feature_id=fid)
         audit.record(conn, a, "code.feature_changed", f["name"], "added " + "; ".join(service.describe(i) for i in items)[:280], a["ip"])
         return service.access_overview(conn, row, v)
 
@@ -480,12 +483,12 @@ def feature_remove_item(rid: int, fid: int, iid: int, a: dict = Depends(member))
     _features(a)
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        it = db.strip(conn["code_items"].find_one({"_id": iid, "feature_id": fid}))
+        feat = store.one("SELECT * FROM code_features WHERE id = ? AND repo_id = ?", (fid, rid))
+        it = feat and store.one("SELECT * FROM code_items WHERE id = ? AND feature_id = ?", (iid, fid))
         if not it:
             raise HTTPException(404, "Not in this feature.")
-        conn["code_items"].delete_one({"_id": iid})
-        feat = conn["code_features"].find_one({"_id": fid}, {"name": 1})
-        audit.record(conn, a, "code.feature_changed", (feat or {}).get("name") or str(fid),
+        store.run("DELETE FROM code_items WHERE id = ?", (iid,))
+        audit.record(conn, a, "code.feature_changed", feat["name"],
                      "removed " + service.describe(it), a["ip"])
         return service.access_overview(conn, row, v)
 
@@ -496,11 +499,12 @@ def feature_delete(rid: int, fid: int, a: dict = Depends(member)):
     _features(a)
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        f = db.strip(conn["code_features"].find_one({"_id": fid, "repo_id": rid}))
+        f = store.one("SELECT * FROM code_features WHERE id = ? AND repo_id = ?", (fid, rid))
         if not f:
             raise HTTPException(404, "No feature by that id.")
-        n = conn["code_grants"].count_documents({"feature_id": fid})
-        conn["code_features"].delete_one({"_id": fid})
+        n = store.scalar("SELECT COUNT(*) FROM code_grants WHERE feature_id = ?", (fid,))
+        # Its items, the grants of it and the roles over it all go in the same step.
+        store.run("DELETE FROM code_features WHERE id = ?", (fid,))
         audit.record(conn, a, "code.feature_deleted", f["name"], f"{n} grant(s) of it ended", a["ip"])
         return service.access_overview(conn, row, v)
 
@@ -514,20 +518,18 @@ def add_owner(rid: int, body: OwnerBody, a: dict = Depends(member)):
         target = service.target_person(conn, body.staff_id)
         service.check_owner_target(v, target, body.role)
         if body.feature_id:
-            if not conn["code_features"].find_one({"_id": body.feature_id, "repo_id": rid}, {"_id": 1}):
+            if not store.one("SELECT id FROM code_features WHERE id = ? AND repo_id = ?", (body.feature_id, rid)):
                 raise HTTPException(404, "No feature by that id.")
             path = None
-            scope = [{"path": r["path"]} for r in conn["code_items"].find({"feature_id": body.feature_id}, {"path": 1})]
+            scope = store.rows("SELECT path FROM code_items WHERE feature_id = ?", (body.feature_id,))
         else:
             path = (body.path or "").strip().strip("/")
             if not (service.exists(row, path, folder=True) or service.exists(row, path)):
                 raise HTTPException(400, f"There's no folder or file {path}.")
             scope = [{"path": path}]
         service.founder_only_inside_protection(v, scope, "chooses owners of")
-        oid = db.next_id(conn, "code_owners")
-        conn["code_owners"].insert_one({"_id": oid, "id": oid, "repo_id": rid, "staff_id": target["id"],
-                                        "role": body.role, "path": path, "feature_id": body.feature_id,
-                                        "added_by": a["id"], "added_at": db.now_iso()})
+        store.run("INSERT INTO code_owners (repo_id, staff_id, role, path, feature_id, added_by, added_at) "
+                  "VALUES (?,?,?,?,?,?,?)", (rid, target["id"], body.role, path, body.feature_id, a["id"], db.now_iso()))
         audit.record(conn, a, "code.owner_set", target["display_name"],
                      f"{body.role} of {'feature #' + str(body.feature_id) if body.feature_id else (path or 'everything')}", a["ip"])
         return service.access_overview(conn, row, v)
@@ -539,15 +541,14 @@ def remove_owner(rid: int, oid: int, a: dict = Depends(member)):
     _need(a, "code.owners")
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        o = db.strip(conn["code_owners"].find_one({"_id": oid, "repo_id": rid}))
+        o = store.one("SELECT * FROM code_owners WHERE id = ? AND repo_id = ?", (oid, rid))
         if not o:
             raise HTTPException(404, "Not found.")
-        person = conn["staff"].find_one({"_id": o["staff_id"]}, {"display_name": 1, "level": 1})
-        if not person:
-            raise HTTPException(404, "Not found.")
+        person = conn["staff"].find_one({"_id": o["staff_id"]}, {"display_name": 1, "level": 1}) or \
+            {"display_name": "someone removed", "level": ""}
         if person["level"] == "founder" and not v.founder:
             raise HTTPException(403, "Only the founder changes what the founder owns.")
-        conn["code_owners"].delete_one({"_id": oid})
+        store.run("DELETE FROM code_owners WHERE id = ?", (oid,))
         audit.record(conn, a, "code.owner_removed", person["display_name"], f"{o['role']} of {o['path'] or 'feature'}", a["ip"])
         return service.access_overview(conn, row, v)
 
@@ -595,15 +596,15 @@ def new_change(rid: int, body: ChangeBody, a: dict = Depends(member)):
     _need(a, "code.request")
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        cid = changes.create(conn, row, a, body.title, body.body)
-        return changes.detail(conn, row, v, changes.get(conn, cid, rid))
+        cid = changes.create(row, a, body.title, body.body)
+        return changes.detail(conn, row, v, changes.get(cid, rid))
 
 
 @router.get("/{rid}/changes/{cid}")
 def change(rid: int, cid: int, a: dict = Depends(member)):
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        return changes.detail(conn, row, v, changes.get(conn, cid, rid))
+        return changes.detail(conn, row, v, changes.get(cid, rid))
 
 
 @router.patch("/{rid}/changes/{cid}")
@@ -611,13 +612,13 @@ def edit_change(rid: int, cid: int, body: ChangeBody, a: dict = Depends(member))
     writable(a)
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        c = changes.get(conn, cid, rid)
+        c = changes.get(cid, rid)
         changes._own_open(c, a)
         if len(body.title.strip()) < 3:
             raise HTTPException(400, "Give the change a short title that says what it does.")
-        conn["code_changes"].update_one({"_id": cid}, {"$set": {"title": body.title.strip(),
-                                                                "body": body.body.strip(), "updated_at": db.now_iso()}})
-        return changes.detail(conn, row, v, changes.get(conn, cid, rid))
+        store.run("UPDATE code_changes SET title = ?, body = ?, updated_at = ? WHERE id = ?",
+                  (body.title.strip()[:120], body.body.strip()[:4000], db.now_iso(), cid))
+        return changes.detail(conn, row, v, changes.get(cid, rid))
 
 
 @router.put("/{rid}/changes/{cid}/files")
@@ -625,8 +626,8 @@ def put_file(rid: int, cid: int, body: FileBody, a: dict = Depends(member)):
     writable(a)
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        changes.put_file(conn, row, v, a, changes.get(conn, cid, rid), body.model_dump())
-        return changes.detail(conn, row, v, changes.get(conn, cid, rid))
+        changes.put_file(row, v, a, changes.get(cid, rid), body.model_dump())
+        return changes.detail(conn, row, v, changes.get(cid, rid))
 
 
 @router.delete("/{rid}/changes/{cid}/files")
@@ -634,8 +635,8 @@ def drop_file(rid: int, cid: int, path: str, a: dict = Depends(member)):
     writable(a)
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        changes.drop_file(conn, a, changes.get(conn, cid, rid), path)
-        return changes.detail(conn, row, v, changes.get(conn, cid, rid))
+        changes.drop_file(a, changes.get(cid, rid), path)
+        return changes.detail(conn, row, v, changes.get(cid, rid))
 
 
 @router.post("/{rid}/changes/{cid}/submit")
@@ -643,8 +644,8 @@ def submit(rid: int, cid: int, a: dict = Depends(member)):
     writable(a)
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        changes.submit(conn, row, a, changes.get(conn, cid, rid))
-        return changes.detail(conn, row, v, changes.get(conn, cid, rid))
+        changes.submit(conn, row, a, changes.get(cid, rid))
+        return changes.detail(conn, row, v, changes.get(cid, rid))
 
 
 @router.post("/{rid}/changes/{cid}/review")
@@ -652,8 +653,8 @@ def review(rid: int, cid: int, body: ReviewBody, a: dict = Depends(member)):
     writable(a)
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        changes.review(conn, row, v, a, changes.get(conn, cid, rid), body.verdict, body.body)
-        return changes.detail(conn, row, v, changes.get(conn, cid, rid))
+        changes.review(conn, row, v, a, changes.get(cid, rid), body.verdict, body.body)
+        return changes.detail(conn, row, v, changes.get(cid, rid))
 
 
 @router.post("/{rid}/changes/{cid}/merge")
@@ -661,8 +662,8 @@ def merge(rid: int, cid: int, body: MergeBody, a: dict = Depends(member)):
     writable(a)
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        changes.merge(conn, row, v, a, changes.get(conn, cid, rid), body.override)
-        return changes.detail(conn, service.repo(conn, rid), v, changes.get(conn, cid, rid))
+        changes.merge(conn, row, v, a, changes.get(cid, rid), body.override)
+        return changes.detail(conn, service.repo(conn, rid), v, changes.get(cid, rid))
 
 
 @router.post("/{rid}/changes/{cid}/withdraw")
@@ -670,8 +671,8 @@ def withdraw(rid: int, cid: int, a: dict = Depends(member)):
     writable(a)
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        changes.withdraw(conn, a, changes.get(conn, cid, rid))
-        return changes.detail(conn, row, v, changes.get(conn, cid, rid))
+        changes.withdraw(a, changes.get(cid, rid))
+        return changes.detail(conn, row, v, changes.get(cid, rid))
 
 
 class CommentBody(BaseModel):
@@ -686,9 +687,9 @@ def add_comment(rid: int, cid: int, body: CommentBody, a: dict = Depends(member)
     writable(a)
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        c = changes.get(conn, cid, rid)
-        changes.comment(conn, row, v, a, c, body.path, body.side, body.line, body.body)
-        return changes.detail(conn, row, v, changes.get(conn, cid, rid))
+        c = changes.get(cid, rid)
+        changes.comment(conn, v, a, c, body.path, body.side, body.line, body.body)
+        return changes.detail(conn, row, v, changes.get(cid, rid))
 
 
 @router.post("/{rid}/changes/{cid}/comments/{mid}/resolve")
@@ -696,9 +697,9 @@ def resolve_comment(rid: int, cid: int, mid: int, a: dict = Depends(member)):
     writable(a)
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        c = changes.get(conn, cid, rid)
-        changes.resolve_comment(conn, v, a, c, mid)
-        return changes.detail(conn, row, v, c)
+        c = changes.get(cid, rid)
+        changes.resolve_comment(v, a, c, mid)
+        return changes.detail(conn, row, v, changes.get(cid, rid))
 
 
 # ── history: what changed, who changed it, and taking it back ────────────────
@@ -707,28 +708,28 @@ def resolve_comment(rid: int, cid: int, mid: int, a: dict = Depends(member)):
 def timeline(rid: int, path: str | None = None, skip: int = 0, a: dict = Depends(member)):
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        return history.timeline(conn, row, v, path=path, skip=max(0, skip))
+        return history.timeline(row, v, path=path, skip=max(0, skip))
 
 
 @router.get("/{rid}/commits/{sha}")
 def commit(rid: int, sha: str, a: dict = Depends(member)):
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        return history.commit(conn, row, v, sha)
+        return history.commit(row, v, sha)
 
 
 @router.get("/{rid}/compare")
 def compare(rid: int, base: str, target: str = "HEAD", a: dict = Depends(member)):
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        return history.compare(conn, row, v, base, target)
+        return history.compare(row, v, base, target)
 
 
 @router.get("/{rid}/blame")
 def blame(rid: int, path: str, a: dict = Depends(member)):
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        return history.blame(conn, row, v, path)
+        return history.blame(row, v, path)
 
 
 class RestoreBody(BaseModel):
@@ -751,7 +752,7 @@ def undo_change(rid: int, cid: int, a: dict = Depends(member)):
     writable(a)
     with db.connect() as conn:
         row, v = _ctx(conn, rid, a)
-        original = changes.get(conn, cid, rid)
+        original = changes.get(cid, rid)
         if original["status"] != "merged" or not original["merged_sha"]:
             raise HTTPException(409, "Only a merged change can be undone.")
         c = changes.undo(conn, row, v, a, original["merged_sha"])
@@ -777,8 +778,9 @@ class CheckpointBody(BaseModel):
 
 
 def _checkpoints(conn, row: dict) -> list[dict]:
-    names = {r["id"]: r["display_name"] for r in conn["staff"].find({}, {"id": 1, "display_name": 1})}
-    rows = [db.strip(r) for r in conn["code_checkpoints"].find({"repo_id": row["id"]}).sort("created_at", -1)]
+    rows = store.rows("SELECT * FROM code_checkpoints WHERE repo_id = ? ORDER BY created_at DESC, id DESC", (row["id"],))
+    names = {r["id"]: r["display_name"] for r in conn["staff"].find(
+        {"id": {"$in": sorted({c["created_by"] for c in rows if c["created_by"]})}}, {"id": 1, "display_name": 1})}
     return [{"name": c["name"], "sha": c["sha"], "short": c["sha"][:8], "note": c["note"], "at": c["created_at"],
              "by": names.get(c["created_by"], "someone removed"), "on_github": bool(c["on_github"])} for c in rows]
 
@@ -798,7 +800,7 @@ def make_checkpoint(rid: int, body: CheckpointBody, a: dict = Depends(member)):
     name = body.name.strip().replace(" ", "-")
     with db.connect() as conn:
         row, _ = _ctx(conn, rid, a)
-        if conn["code_checkpoints"].find_one({"repo_id": rid, "name": name}, {"_id": 1}):
+        if store.one("SELECT id FROM code_checkpoints WHERE repo_id = ? AND name = ?", (rid, name)):
             raise HTTPException(409, "A checkpoint with that name exists.")
         try:
             with gitops.lock(rid):
@@ -812,10 +814,8 @@ def make_checkpoint(rid: int, body: CheckpointBody, a: dict = Depends(member)):
                         pass
         except gitops.GitError as e:
             raise HTTPException(400, str(e))
-        cpid = db.next_id(conn, "code_checkpoints")
-        conn["code_checkpoints"].insert_one({"_id": cpid, "id": cpid, "repo_id": rid, "name": name, "sha": sha,
-                                             "note": body.note.strip(), "created_by": a["id"], "created_at": db.now_iso(),
-                                             "on_github": on_github})
+        store.run("INSERT INTO code_checkpoints (repo_id, name, sha, note, created_by, created_at, on_github) "
+                  "VALUES (?,?,?,?,?,?,?)", (rid, name, sha, body.note.strip(), a["id"], db.now_iso(), int(on_github)))
         audit.record(conn, a, "code.checkpoint", f"{row['name']}:{name}", sha[:10], a["ip"])
         return {"items": _checkpoints(conn, row), "can_create": True}
 
@@ -836,7 +836,7 @@ def backup_now(rid: int, a: dict = Depends(member)):
     with db.connect() as conn:
         row = service.repo(conn, rid)
         try:
-            service.backup_daily(conn, row)
+            service.backup_daily(row)
         except gitops.GitError as e:
             raise HTTPException(500, f"The backup didn't finish: {e}")
         audit.record(conn, a, "code.backup", row["name"], "", a["ip"])

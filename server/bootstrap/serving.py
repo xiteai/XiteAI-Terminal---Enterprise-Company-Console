@@ -15,6 +15,8 @@ then two servers answer the same link, old code and new at random.
 from __future__ import annotations
 
 import asyncio
+import io
+import os
 import socket
 import sys
 import threading
@@ -73,13 +75,35 @@ def _received(line: bytes) -> socket.socket:
     raise SystemExit("serving: expected a socket from dev.py on stdin")
 
 
+def _take_stdin() -> "io.RawIOBase":
+    """The pipe from dev.py becomes this process's private handle, and its
+    standard input becomes NUL. The watcher below blocks reading that pipe for
+    as long as the server runs, and on Windows any process holding a handle to
+    a pipe with a read pending hangs the moment it touches it — every git
+    command the server started inherited it and froze. After this, nothing
+    the server launches can inherit it: the private copy is non-inheritable
+    (PEP 446) and the inheritable original is closed."""
+    private = os.fdopen(os.dup(0), "rb", buffering=0)
+    null = os.open(os.devnull, os.O_RDONLY)
+    os.dup2(null, 0)                                  # closes the original pipe handle behind fd 0
+    os.close(null)
+    if sys.platform == "win32":
+        import ctypes
+        import msvcrt
+        ctypes.windll.kernel32.SetStdHandle(-10, msvcrt.get_osfhandle(0))   # STD_INPUT_HANDLE -> NUL
+    sys.stdin = open(0, closefd=False)
+    return private
+
+
 def child() -> None:
     """`python -m server.bootstrap.serving`: dev.py's server process."""
     sock = _received(sys.stdin.buffer.readline())
+    pipe = _take_stdin()
     stop = threading.Event()
 
     def _until_stdin_closes() -> None:
-        sys.stdin.buffer.read()                      # returns when dev.py closes the pipe, or dies
+        while pipe.read(4096):                       # returns b"" when dev.py closes the pipe, or dies
+            pass
         stop.set()
     threading.Thread(target=_until_stdin_closes, daemon=True, name="parent-watch").start()
     serve(sock, stop=stop, shared=True, log_level="warning")

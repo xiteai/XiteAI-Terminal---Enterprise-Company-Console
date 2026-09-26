@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from ...core import db
 from ...web.deps import require
+from ..installs import store as installs_store
 from ..products import service as products
 from . import service
 
@@ -42,8 +43,8 @@ def ticket(ticket_id: int, a: dict = Depends(require("support"))):
                 for n in conn["ticket_notes"].find({"ticket_id": ticket_id}).sort("at", 1)]
         install = None
         if row["install_code"]:
-            install = conn["installs"].find_one({"code": row["install_code"]},
-                                                {"id": 1, "code": 1, "app_version": 1, "last_seen": 1})
+            install = installs_store.one("SELECT id, code, app_version, last_seen FROM installs WHERE code = ?",
+                                         (row["install_code"],))
         team = []
         if "support.assign" in a["perms"]:
             team = [{"id": s["id"], "name": s["display_name"], "level": s["level"]}

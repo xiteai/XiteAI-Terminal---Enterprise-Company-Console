@@ -2,7 +2,10 @@
 
 GitHub is the master copy; the server keeps a clone that follows it. Every
 read goes through access.Viewer, so a person only ever receives the lines
-they may see."""
+they may see.
+
+Codebase records live in store (SQLite, local); people, the audit trail,
+notifications and settings in MongoDB, reached through `conn`."""
 from __future__ import annotations
 
 import logging
@@ -13,12 +16,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import HTTPException
-from pymongo.errors import DuplicateKeyError
 
 from ...access import levels
 from ...core import audit, config, db, notify, settings
-from . import gitops, text
-from .access import Viewer, covers, protected_paths
+from . import gitops, store, text
+from .access import Viewer, covers
 
 log = logging.getLogger("terminal.code")
 
@@ -48,16 +50,29 @@ def blocked(path: str) -> bool:
     return any(low.endswith(ext) for ext in BLOCKED_EXT)
 
 
+def _names(conn, ids) -> dict[int, dict]:
+    """People by id from MongoDB, for the names and levels a page shows."""
+    ids = sorted({i for i in ids if i})
+    if not ids:
+        return {}
+    return {r["id"]: r for r in conn["staff"].find({"id": {"$in": ids}},
+                                                   {"id": 1, "display_name": 1, "level": 1, "title": 1})}
+
+
 # ── repositories ──────────────────────────────────────────────────────────────
 
+def get_repo(repo_id: int) -> dict | None:
+    return store.one("SELECT * FROM code_repos WHERE id = ?", (repo_id,))
+
+
 def repo(conn, repo_id: int, ready: bool = True) -> dict:
-    row = db.strip(conn["code_repos"].find_one({"_id": repo_id}))
+    row = get_repo(repo_id)
     if not row:
         raise HTTPException(404, "No repository by that id.")
     if row["status"] == "ready" and not gitops.repo_dir(repo_id).exists():
         # The server's copy is gone (a new server, a wiped disk): GitHub has it all.
-        conn["code_repos"].update_one({"_id": repo_id}, {"$set": {"status": "cloning",
-                                                                  "status_detail": "Copying it again from GitHub"}})
+        store.run("UPDATE code_repos SET status = 'cloning', status_detail = 'Copying it again from GitHub' WHERE id = ?",
+                  (repo_id,))
         threading.Thread(target=_clone, args=(repo_id, row["remote_url"], row["branch"]), daemon=True).start()
         row["status"] = "cloning"
     if ready and row["status"] != "ready":
@@ -68,13 +83,6 @@ def repo(conn, repo_id: int, ready: bool = True) -> dict:
     return row
 
 
-def _insert_ignore(coll, doc: dict) -> None:
-    try:
-        coll.insert_one(doc)
-    except DuplicateKeyError:
-        pass
-
-
 def seed_protected(conn, row: dict) -> None:
     """Once per repository: protect the suggested paths that exist in it. Once
     only, so a path the founder deliberately unprotects stays unprotected."""
@@ -83,51 +91,77 @@ def seed_protected(conn, row: dict) -> None:
         return
     files = [p for p, _ in gitops.ls(row["id"], row["head_sha"] or "HEAD")]
     now = db.now_iso()
-    wanted = [p for p in PROTECT_SUGGEST if any(covers(p, f) for f in files)]
-    if wanted:
-        ids = db.next_ids(conn, "code_protected", len(wanted))
-        for pid, p in zip(ids, wanted):
-            _insert_ignore(conn["code_protected"], {"_id": pid, "id": pid, "repo_id": row["id"], "path": p,
-                                                    "added_by": None, "added_at": now})
+    store.many("INSERT OR IGNORE INTO code_protected (repo_id, path, added_at) VALUES (?,?,?)",
+               [(row["id"], p, now) for p in PROTECT_SUGGEST if any(covers(p, f) for f in files)])
     settings.put(conn, key, "1")
 
 
 def repo_card(row: dict) -> dict:
-    return {k: row[k] for k in ("id", "name", "remote_url", "branch", "status", "status_detail", "head_sha",
+    card = {k: row[k] for k in ("id", "name", "remote_url", "branch", "status", "status_detail", "head_sha",
                                 "last_sync_at", "created_at", "held_remote")} | {
         "pushes": bool(config.GITHUB_TOKEN) or not row["remote_url"].startswith("https://")}
+    if row["status"] == "cloning":
+        card["progress"] = gitops.progress(row["id"])
+    return card
 
 
 def connect_repo(conn, actor: dict, name: str, url: str, branch: str) -> dict:
-    name, url, branch = name.strip()[:80], url.strip(), (branch or "main").strip()
+    name, url, branch = name.strip()[:80], url.strip(), branch.strip()
     if len(name) < 2:
         raise HTTPException(400, "Give the repository a name.")
-    if not _BRANCH.match(branch):
-        raise HTTPException(400, "That isn't a branch name.")
     if not (_GITHUB_URL.match(url) or (config.CODE_ALLOW_LOCAL and not url.startswith(("http:", "https:")))):
         raise HTTPException(400, "Use the repository's GitHub address, like https://github.com/you/repo.")
-    rid = db.next_id(conn, "code_repos")
-    conn["code_repos"].insert_one({
-        "_id": rid, "id": rid, "name": name, "remote_url": url, "branch": branch, "status": "cloning",
-        "status_detail": "", "head_sha": "", "remote_sha": "", "held_remote": "", "last_sync_at": None,
-        "created_by": actor["id"], "created_at": db.now_iso(),
-    })
+    if not branch:
+        # Don't guess "main": plenty of real repositories still default to
+        # "master" or something else entirely, and guessing wrong used to fail
+        # silently in the background, minutes after "Connect" said it worked.
+        branch = gitops.default_branch(url) or ""
+        if not branch:
+            raise HTTPException(400, "Couldn't reach that address to find its default branch. Check it (a private "
+                                     "repository also needs GITHUB_TOKEN in the server's .env), or type the branch "
+                                     "name yourself.")
+    if not _BRANCH.match(branch):
+        raise HTTPException(400, "That isn't a branch name.")
+    rid = store.run("INSERT INTO code_repos (name, remote_url, branch, created_by, created_at) VALUES (?,?,?,?,?)",
+                    (name, url, branch, actor["id"], db.now_iso())).lastrowid
     audit.record(conn, actor, "code.repo_connected", name, url, actor["ip"])
     threading.Thread(target=_clone, args=(rid, url, branch), daemon=True, name=f"clone-{rid}").start()
-    return repo_card(db.strip(conn["code_repos"].find_one({"_id": rid})))
+    return repo_card(get_repo(rid))
 
 
 def _clone(rid: int, url: str, branch: str) -> None:
+    """Runs in its own thread. Whatever happens, the row leaves 'cloning':
+    a thread that dies on an unexpected error would otherwise leave it
+    spinning forever with nobody working on it. (A cancelled copy's row is
+    already gone; the update then simply matches nothing.)"""
     try:
         with gitops.lock(rid):
             sha = gitops.clone(rid, url, branch)
-        with db.connect() as conn:
-            conn["code_repos"].update_one({"_id": rid}, {"$set": {"status": "ready", "status_detail": "",
-                                                                  "head_sha": sha, "remote_sha": sha,
-                                                                  "held_remote": "", "last_sync_at": db.now_iso()}})
+        store.run("UPDATE code_repos SET status = 'ready', status_detail = '', head_sha = ?, remote_sha = ?, "
+                  "held_remote = '', last_sync_at = ? WHERE id = ? AND status = 'cloning'",
+                  (sha, sha, db.now_iso(), rid))
+        return
     except gitops.GitError as e:
-        with db.connect() as conn:
-            conn["code_repos"].update_one({"_id": rid}, {"$set": {"status": "failed", "status_detail": str(e)}})
+        detail = str(e)
+    except Exception:                                  # noqa: BLE001 — must never leave the row stuck
+        log.exception("clone of repository %s", rid)
+        detail = "Something went wrong copying it. Remove it and connect again."
+    store.run("UPDATE code_repos SET status = 'failed', status_detail = ? WHERE id = ? AND status = 'cloning'",
+              (detail, rid))
+
+
+def resume_stuck_clones() -> None:
+    """On start: a repository still marked 'cloning' was being copied when the
+    server stopped, and that copy died with it. Stop any git left writing into
+    its folder, clear the half-copy, and start it again."""
+    for row in store.rows("SELECT * FROM code_repos WHERE status = 'cloning'"):
+        gitops.kill_orphans(row["id"])
+        try:
+            gitops.remove(row["id"])
+        except OSError:
+            log.exception("clearing the half-copy of repository %s", row["id"])
+        threading.Thread(target=_clone, args=(row["id"], row["remote_url"], row["branch"]), daemon=True,
+                         name=f"clone-{row['id']}").start()
 
 
 def sync(conn, row: dict) -> dict:
@@ -137,16 +171,15 @@ def sync(conn, row: dict) -> dict:
         with gitops.lock(row["id"]):
             old, new, remote = gitops.sync(row["id"], row["remote_url"], row["branch"], row["remote_sha"])
             if old != new:
-                remap(conn, row["id"], old, new)
-        conn["code_repos"].update_one({"_id": row["id"]}, {"$set": {"head_sha": new, "remote_sha": remote,
-                                                                    "held_remote": "", "last_sync_at": db.now_iso(),
-                                                                    "status_detail": ""}})
+                remap(row["id"], old, new)
+        store.run("UPDATE code_repos SET head_sha = ?, remote_sha = ?, held_remote = '', last_sync_at = ?, "
+                  "status_detail = '' WHERE id = ?", (new, remote, db.now_iso(), row["id"]))
     except gitops.HistoryRewritten as e:
         rewritten(conn, row, e)
     except gitops.GitError as e:
-        conn["code_repos"].update_one({"_id": row["id"]}, {"$set": {"status_detail": f"Last sync failed: {e}"}})
+        store.run("UPDATE code_repos SET status_detail = ? WHERE id = ?", (f"Last sync failed: {e}", row["id"]))
         raise HTTPException(502, f"Couldn't sync with GitHub: {e}")
-    return db.strip(conn["code_repos"].find_one({"_id": row["id"]}))
+    return get_repo(row["id"])
 
 
 REWRITTEN = ("GitHub's history for this repository was rewritten (someone force-pushed). The Terminal kept the real "
@@ -156,8 +189,8 @@ REWRITTEN = ("GitHub's history for this repository was rewritten (someone force-
 def rewritten(conn, row: dict, e) -> None:
     """Hold the line and raise the alarm, once per rewrite."""
     if row["held_remote"] != e.remote:
-        conn["code_repos"].update_one({"_id": row["id"]}, {"$set": {
-            "held_remote": e.remote, "status_detail": "GitHub's history was rewritten. Waiting for the founder."}})
+        store.run("UPDATE code_repos SET held_remote = ?, status_detail = ? WHERE id = ?",
+                  (e.remote, "GitHub's history was rewritten. Waiting for the founder.", row["id"]))
         audit.record(conn, None, "code.history_rewritten", row["name"], f"GitHub now at {e.remote[:10]}; kept ours at "
                      f"{row['head_sha'][:10]}")
         notify.send(conn, founders(conn), "code.rewritten", f"GitHub's history for {row['name']} was rewritten",
@@ -166,7 +199,7 @@ def rewritten(conn, row: dict, e) -> None:
     raise HTTPException(409, {"message": REWRITTEN, "field": "rewritten"})
 
 
-def backup_daily(conn, row: dict) -> Path | None:
+def backup_daily(row: dict) -> Path | None:
     """Once a day, the whole history into one file that restores without GitHub
     (`git clone <file>`); the newest CODE_BACKUPS_KEEP are kept."""
     if config.CODE_BACKUPS_KEEP <= 0 or row["status"] != "ready":
@@ -206,9 +239,9 @@ def start_sync_loop() -> None:
             time.sleep(config.CODE_SYNC_MIN * 60)
             try:
                 with db.connect() as conn:
-                    for row in [db.strip(r) for r in conn["code_repos"].find({"status": "ready"})]:
+                    for row in store.rows("SELECT * FROM code_repos WHERE status = 'ready'"):
                         try:
-                            backup_daily(conn, sync(conn, row))
+                            backup_daily(sync(conn, row))
                         except HTTPException:
                             pass                    # already recorded on the repository; the founder sees it
                         except gitops.GitError:
@@ -220,12 +253,12 @@ def start_sync_loop() -> None:
 
 # ── following the code: grants move when files change ────────────────────────
 
-def remap(conn, repo_id: int, old: str, new: str) -> None:
+def remap(repo_id: int, old: str, new: str) -> None:
     changes = gitops.changed(repo_id, old, new)
     if not changes:
         return
     touched = {p for _, p, _ in changes} | {np for _, _, np in changes}
-    items = [i for i in (db.strip(r) for r in conn["code_items"].find({"repo_id": repo_id}))
+    items = [i for i in store.rows("SELECT * FROM code_items WHERE repo_id = ?", (repo_id,))
              if i["path"] in touched or i["kind"] == "folder"]
     cache: dict[tuple[str, str], list[str] | None] = {}
 
@@ -240,34 +273,36 @@ def remap(conn, repo_id: int, old: str, new: str) -> None:
 
     moves = {p: (st, np) for st, p, np in changes}
     now_files = None
-    for it in items:
-        path, fields = it["path"], {}
-        if it["kind"] == "folder":
-            if any(st in "DR" and covers(path, p) for st, p, _ in changes) and path:
-                now_files = now_files or [p for p, _ in gitops.ls(repo_id, new)]
-                fields["missing"] = not any(covers(path, p) for p in now_files)
-        elif path in moves:
-            st, np = moves[path]
-            if st == "D":
-                fields["missing"] = True
-            else:
-                if st == "R":
-                    fields["path"] = np
-                if it["kind"] == "lines" and not it["missing"]:
-                    old_l, new_l = lines_at(old, path), lines_at(new, np)
-                    span = text.map_range(old_l, new_l, it["line_start"], it["line_end"]) if old_l and new_l else None
-                    if span:
-                        fields.update(line_start=span[0], line_end=span[1])
-                    else:
-                        fields["missing"] = True
-                elif it["kind"] == "symbol":
-                    new_l = lines_at(new, np)
-                    fields["missing"] = not (new_l and text.find_symbol(np, new_l, it["symbol"]))
-        if fields:
-            conn["code_items"].update_one({"_id": it["id"]}, {"$set": fields})
-    renames = [(p, np) for st, p, np in changes if st == "R"]
-    for p, np in renames:
-        conn["code_owners"].update_many({"repo_id": repo_id, "path": p}, {"$set": {"path": np}})
+    with store.tx() as t:
+        for it in items:
+            path, fields = it["path"], {}
+            if it["kind"] == "folder":
+                if any(st in "DR" and covers(path, p) for st, p, _ in changes) and path:
+                    now_files = now_files or [p for p, _ in gitops.ls(repo_id, new)]
+                    fields["missing"] = int(not any(covers(path, p) for p in now_files))
+            elif path in moves:
+                st, np = moves[path]
+                if st == "D":
+                    fields["missing"] = 1
+                else:
+                    if st == "R":
+                        fields["path"] = np
+                    if it["kind"] == "lines" and not it["missing"]:
+                        old_l, new_l = lines_at(old, path), lines_at(new, np)
+                        span = text.map_range(old_l, new_l, it["line_start"], it["line_end"]) if old_l and new_l else None
+                        if span:
+                            fields.update(line_start=span[0], line_end=span[1])
+                        else:
+                            fields["missing"] = 1
+                    elif it["kind"] == "symbol":
+                        new_l = lines_at(new, np)
+                        fields["missing"] = int(not (new_l and text.find_symbol(np, new_l, it["symbol"])))
+            if fields:
+                t.run(f"UPDATE code_items SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?",
+                      (*fields.values(), it["id"]))
+        for st, p, np in changes:
+            if st == "R":
+                t.run("UPDATE code_owners SET path = ? WHERE repo_id = ? AND path = ?", (np, repo_id, p))
 
 
 # ── the folder map ────────────────────────────────────────────────────────────
@@ -283,7 +318,7 @@ def files_at_head(row: dict) -> list[tuple[str, int]]:
     return _tree_cache[key]
 
 
-def tree(conn, row: dict, v: Viewer) -> list[dict]:
+def tree(row: dict, v: Viewer) -> list[dict]:
     """[{p: path, s: size, a: full|partial|none, e: can edit, k: protected}].
     Without the map permission, only the files they can open."""
     show_all = v.founder or "code.map" in v.perms or v.read_all
@@ -402,13 +437,14 @@ def note_read(conn, actor: dict, kind: str, path: str = "") -> None:
     if actor["level"] == "founder":
         return
     now = datetime.now(timezone.utc)
-    rid = db.next_id(conn, "code_reads")
-    conn["code_reads"].insert_one({"_id": rid, "staff_id": actor["id"], "kind": kind, "path": path,
-                                   "at": db.iso(now)})
-    conn["code_reads"].delete_many({"at": {"$lt": db.iso(now - timedelta(days=2))}})
     since = db.iso(now - timedelta(hours=1))
-    files = len(conn["code_reads"].distinct("path", {"staff_id": actor["id"], "kind": "open", "at": {"$gt": since}}))
-    searches = conn["code_reads"].count_documents({"staff_id": actor["id"], "kind": "search", "at": {"$gt": since}})
+    with store.tx() as t:
+        t.run("INSERT INTO code_reads (staff_id, kind, path, at) VALUES (?,?,?,?)", (actor["id"], kind, path, db.iso(now)))
+        t.run("DELETE FROM code_reads WHERE at < ?", (db.iso(now - timedelta(days=2)),))
+        files = t.scalar("SELECT COUNT(DISTINCT path) FROM code_reads WHERE staff_id = ? AND kind = 'open' AND at > ?",
+                         (actor["id"], since))
+        searches = t.scalar("SELECT COUNT(*) FROM code_reads WHERE staff_id = ? AND kind = 'search' AND at > ?",
+                            (actor["id"], since))
     what = f"opened {files} different files" if kind == "open" else f"ran {searches} searches"
     if files >= config.CODE_PAUSE_FILES_HOUR or searches >= config.CODE_PAUSE_SEARCHES_HOUR:
         conn["staff"].update_one({"_id": actor["id"]}, {"$set": {"code_paused": True}})
@@ -496,7 +532,7 @@ def in_team(conn, lead_id: int, staff_id: int) -> bool:
     seen, cur = set(), staff_id
     for _ in range(12):
         row = conn["staff"].find_one({"_id": cur}, {"reports_to": 1})
-        boss = row["reports_to"] if row else None
+        boss = row.get("reports_to") if row else None
         if not boss or boss in seen:
             return False
         if boss == lead_id:
@@ -588,20 +624,17 @@ def describe(item: dict) -> str:
     return f"{item['symbol']} in {item['path']}"
 
 
-def add_items(conn, repo_id: int, items: list[dict], *, grant_id=None, feature_id=None) -> None:
-    if not items:
-        return
-    ids = db.next_ids(conn, "code_items", len(items))
-    conn["code_items"].insert_many([
-        {"_id": iid, "id": iid, "repo_id": repo_id, "feature_id": feature_id, "grant_id": grant_id,
-         "kind": it["kind"], "path": it["path"], "line_start": it.get("line_start"), "line_end": it.get("line_end"),
-         "symbol": it.get("symbol", ""), "missing": False}
-        for iid, it in zip(ids, items)])
+def add_items(q, repo_id: int, items: list[dict], *, grant_id=None, feature_id=None) -> None:
+    """`q` is store itself, or the handle of a store.tx() the items belong in."""
+    q.many("INSERT INTO code_items (repo_id, feature_id, grant_id, kind, path, line_start, line_end, symbol) "
+           "VALUES (?,?,?,?,?,?,?,?)",
+           [(repo_id, feature_id, grant_id, it["kind"], it["path"], it.get("line_start"), it.get("line_end"),
+             it.get("symbol", "")) for it in items])
 
 
-def items_of(conn, *, grant_id=None, feature_id=None) -> list[dict]:
-    filt = {"grant_id": grant_id} if grant_id else {"feature_id": feature_id}
-    rows = [db.strip(r) for r in conn["code_items"].find(filt).sort([("path", 1), ("line_start", 1)])]
+def items_of(*, grant_id=None, feature_id=None) -> list[dict]:
+    col, val = ("grant_id", grant_id) if grant_id else ("feature_id", feature_id)
+    rows = store.rows(f"SELECT * FROM code_items WHERE {col} = ? ORDER BY path, line_start", (val,))
     return [{"id": r["id"], "kind": r["kind"], "path": r["path"], "line_start": r["line_start"],
              "line_end": r["line_end"], "symbol": r["symbol"], "missing": bool(r["missing"]),
              "label": describe(r)} for r in rows]
@@ -610,16 +643,19 @@ def items_of(conn, *, grant_id=None, feature_id=None) -> list[dict]:
 def access_overview(conn, row: dict, v: Viewer) -> dict:
     """Grants, features and owners, trimmed to what this person may see."""
     see_all = v.founder or bool({"code.access_view", "code.grant_all", "code.owners", "code.revoke"} & v.perms)
-    names = {r["id"]: r for r in conn["staff"].find({}, {"id": 1, "display_name": 1, "level": 1, "title": 1})}
+    features = {f["id"]: f for f in store.rows("SELECT * FROM code_features WHERE repo_id = ? ORDER BY name", (row["id"],))}
+    grant_rows = store.rows("SELECT * FROM code_grants WHERE repo_id = ? ORDER BY granted_at DESC", (row["id"],))
+    owner_rows = store.rows("SELECT * FROM code_owners WHERE repo_id = ? ORDER BY path, role", (row["id"],))
+    names = _names(conn, [g["staff_id"] for g in grant_rows] + [g["granted_by"] for g in grant_rows]
+                   + [o["staff_id"] for o in owner_rows])
 
     def person(i):
         r = names.get(i)
         return {"id": i, "name": r["display_name"], "level": r["level"], "level_label": levels.LABEL[r["level"]],
                 "title": r["title"]} if r else {"id": i, "name": "someone removed", "level": "", "level_label": "", "title": ""}
 
-    features = {f["id"]: db.strip(f) for f in conn["code_features"].find({"repo_id": row["id"]}).sort("name", 1)}
     grants = []
-    for g in (db.strip(r) for r in conn["code_grants"].find({"repo_id": row["id"]}).sort("granted_at", -1)):
+    for g in grant_rows:
         if not (see_all or g["granted_by"] == v.id or g["staff_id"] == v.id or in_team(conn, v.id, g["staff_id"])):
             continue
         expired = bool(g["expires_at"] and g["expires_at"] <= db.now_iso())
@@ -628,16 +664,15 @@ def access_overview(conn, row: dict, v: Viewer) -> dict:
                        "expired": expired, "note": g["note"],
                        "feature": ({"id": g["feature_id"], "name": features[g["feature_id"]]["name"]}
                                    if g["feature_id"] in features else None),
-                       "items": items_of(conn, feature_id=g["feature_id"]) if g["feature_id"] else items_of(conn, grant_id=g["id"])})
+                       "items": items_of(feature_id=g["feature_id"]) if g["feature_id"] else items_of(grant_id=g["id"])})
     owners = [{"id": o["id"], "person": person(o["staff_id"]), "role": o["role"], "path": o["path"],
                "feature": {"id": o["feature_id"], "name": features[o["feature_id"]]["name"]} if o["feature_id"] in features else None,
-               "at": o["added_at"]}
-              for o in (db.strip(r) for r in conn["code_owners"].find({"repo_id": row["id"]}).sort([("path", 1), ("role", 1)]))]
+               "at": o["added_at"]} for o in owner_rows]
     return {
         "grants": grants,
         "owners": owners,
         "features": [{"id": f["id"], "name": f["name"], "description": f["description"],
-                      "items": items_of(conn, feature_id=f["id"]),
+                      "items": items_of(feature_id=f["id"]),
                       "grants": sum(1 for g in grants if g["feature"] and g["feature"]["id"] == f["id"])}
                      for f in features.values()],
         "can": {"grant": v.founder or bool({"code.grant", "code.grant_all"} & v.perms),

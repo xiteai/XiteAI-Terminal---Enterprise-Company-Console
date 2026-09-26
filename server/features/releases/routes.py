@@ -5,8 +5,9 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 
-from ...core import db, settings
+from ...core import db
 from ...web.deps import require
+from ..installs import store as installs_store
 from ..products import service as products
 from . import loader
 
@@ -18,8 +19,9 @@ def releases(product: str = products.DEFAULT, a: dict = Depends(require("release
     since = db.iso(datetime.now(timezone.utc) - timedelta(days=30))
     with db.connect() as conn:
         prod = products.get(conn, product)
-        act = list(conn["installs"].find({"product_id": prod["id"], "last_seen": {"$gte": since}, **settings.demo_filter(conn)},
-                                         {"app_version": 1, "update_state": 1}))
+        act = installs_store.rows(
+            "SELECT app_version, update_state FROM installs WHERE product_id = ? AND last_seen >= ?"
+            + installs_store.demo_sql(conn), (prod["id"], since))
     counts = Counter(r["app_version"] for r in act)
     failed = Counter(r["app_version"] for r in act if r["update_state"] == "failed")
     # Only XOS1 has a notes folder today; any other product lists the versions its installs report.

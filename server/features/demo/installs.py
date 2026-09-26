@@ -2,10 +2,9 @@
 usage by hour and day, some churn, a few failed updates. A web product gets
 browsers instead of Windows builds, and features instead of tools.
 
-Built for one bulk `insert_many` of installs and one of checkins, not one
-round trip per document: a demo seed is hundreds of installs and can be many
-thousands of check-ins, and each round trip here goes over the network to
-Atlas, not to a local file the way SQLite did."""
+Installs and check-ins live in the local SQLite store now (features/installs/
+store.py), so this is one transaction of a few thousand rows — no round trip
+per document the way Atlas would have needed."""
 from __future__ import annotations
 
 import base64
@@ -14,9 +13,9 @@ import json
 import random
 from datetime import datetime, timedelta
 
-from ...core import db
 from ..checkin.ingest import _CODE_ALPHABET
 from ..checkin.verify import fingerprint
+from ..installs import store as installs_store
 from . import data as d
 
 
@@ -61,7 +60,7 @@ def _times(rng, now: datetime, first_ago: float, profile: str, offset: float) ->
     return sorted(out) or [now - timedelta(days=first_ago)]
 
 
-def _codes(conn, rng: random.Random, count: int) -> list[str]:
+def _codes(rng: random.Random, count: int) -> list[str]:
     """`count` install codes, guaranteed unique against each other and against
     what's already stored — checked together, once, not once per code."""
     def draw() -> str:
@@ -72,7 +71,12 @@ def _codes(conn, rng: random.Random, count: int) -> list[str]:
     seen: set[str] = set()
     while len(out) < count:
         candidates = {c for c in (draw() for _ in range(count - len(out))) if c not in seen}
-        taken = set(conn["installs"].distinct("code", {"code": {"$in": list(candidates)}})) if candidates else set()
+        if candidates:
+            marks = ",".join("?" * len(candidates))
+            taken = {r["code"] for r in installs_store.rows(
+                f"SELECT code FROM installs WHERE code IN ({marks})", list(candidates))}
+        else:
+            taken = set()
         fresh = candidates - taken
         out.extend(fresh)
         seen |= fresh
@@ -83,8 +87,7 @@ def seed(conn, rng: random.Random, now: datetime, product_id: int, kind: str = "
          count: int = 186) -> tuple[list[str], int]:
     f = WEB if kind == "web" else DESKTOP
     rels = f["releases"]
-    codes = _codes(conn, rng, count)
-    install_ids = list(db.next_ids(conn, "installs", count))
+    codes = _codes(rng, count)
     installs, per_install_times = [], []
     for i in range(count):
         if rng.random() < 0.22:
@@ -105,33 +108,33 @@ def seed(conn, rng: random.Random, now: datetime, product_id: int, kind: str = "
         last = times[-1]
         crashes = rng.choice([1, 1, 2, 3]) if rng.random() < f["crash"] else 0
         pk = base64.b64encode(bytes(rng.getrandbits(8) for _ in range(32))).decode()
-        install_id = install_ids[i]
-        installs.append({
-            "_id": install_id, "id": install_id, "product_id": product_id, "code": codes[i],
-            "hardware_hash": hashlib.sha256(f"demo-{i}-{rng.random()}".encode()).hexdigest(), "public_key": pk,
-            "key_fingerprint": fingerprint(pk), "status": "relinked" if rng.random() < 0.02 else "verified",
-            "first_seen": (now - timedelta(days=first_ago)).isoformat(), "last_seen": last.isoformat(),
-            "app_version": _version_at(rels, (now - last).total_seconds() / 86400, first_ago, lag, cap),
-            "os_version": rng.choices(f["os"][0], weights=f["os"][1])[0],
-            "device_type": rng.choices(f["device"][0], weights=f["device"][1])[0],
-            "region": region, "timezone": tz, "locale": locale, "consent_profile": consent_profile,
-            "consent_usage": consent_usage, "user_name": name if consent_profile else None,
-            "user_dob": dob if consent_profile else None, "update_state": "failed" if stuck else "ok",
-            "crash_count_7d": crashes, "checkin_count": len(times), "is_demo": True,
-        })
+        version = _version_at(rels, (now - last).total_seconds() / 86400, first_ago, lag, cap)
+        installs.append((
+            product_id, codes[i], hashlib.sha256(f"demo-{i}-{rng.random()}".encode()).hexdigest(), pk,
+            fingerprint(pk), "relinked" if rng.random() < 0.02 else "verified",
+            (now - timedelta(days=first_ago)).isoformat(), last.isoformat(), version,
+            installs_store.version_sort(version),
+            rng.choices(f["os"][0], weights=f["os"][1])[0], rng.choices(f["device"][0], weights=f["device"][1])[0],
+            region, tz, locale, int(consent_profile), int(consent_usage), name if consent_profile else None,
+            dob if consent_profile else None, "failed" if stuck else "ok", crashes, len(times), 1,
+        ))
         for at in times:
             ago = (now - at).total_seconds() / 86400
             tools = json.dumps(rng.choices(f["tools"][0], weights=f["tools"][1], k=rng.randint(1, 3))) \
                 if consent_usage else None
-            per_install_times.append({"install_id": install_id, "at": at.isoformat(),
-                                      "app_version": _version_at(rels, ago, first_ago, lag, cap),
-                                      "update_state": "failed" if stuck and ago < 6 else "ok",
-                                      "crash_count": crashes if ago < 7 else 0, "tools_json": tools, "is_demo": True})
-    if installs:
-        conn["installs"].insert_many(installs)
-    if per_install_times:
-        ck_ids = db.next_ids(conn, "checkins", len(per_install_times))
-        for ckid, doc in zip(ck_ids, per_install_times):
-            doc["_id"] = doc["id"] = ckid
-        conn["checkins"].insert_many(per_install_times)
+            per_install_times.append((i, at.isoformat(),
+                                      _version_at(rels, ago, first_ago, lag, cap), "failed" if stuck and ago < 6 else "ok",
+                                      crashes if ago < 7 else 0, tools))
+    with installs_store.tx() as t:
+        install_ids = []
+        for row in installs:
+            install_ids.append(t.run(
+                "INSERT INTO installs (product_id, code, hardware_hash, public_key, key_fingerprint, status, "
+                "first_seen, last_seen, app_version, version_sort, os_version, device_type, region, timezone, "
+                "locale, consent_profile, consent_usage, user_name, user_dob, update_state, crash_count_7d, "
+                "checkin_count, is_demo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", row).lastrowid)
+        if per_install_times:
+            t.many("INSERT INTO checkins (install_id, at, app_version, update_state, crash_count, tools_json, "
+                  "is_demo) VALUES (?,?,?,?,?,?,1)",
+                  [(install_ids[i], at, v, us, cc, tj) for i, at, v, us, cc, tj in per_install_times])
     return codes, len(per_install_times)

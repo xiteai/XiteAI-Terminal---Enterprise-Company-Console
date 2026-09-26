@@ -8,7 +8,10 @@ name.
   (conflict: GitHub moved under the same lines; the author redoes the edit)
 
 A person edits only lines they were given; the server rebuilds the whole
-file itself, so an edit can never reach outside what they could see."""
+file itself, so an edit can never reach outside what they could see.
+
+Change requests, their files, reviews and comments live in store (SQLite);
+people, notifications and the audit trail in MongoDB (`conn`)."""
 from __future__ import annotations
 
 import json
@@ -18,7 +21,7 @@ from fastapi import HTTPException
 
 from ...access import perms as perms_mod
 from ...core import audit, config, db, notify
-from . import gitops, service, text
+from . import gitops, service, store, text
 from .access import Viewer, guard_of, people_answering_for, protected_paths
 
 OPEN = ("draft", "changes", "conflict")
@@ -33,52 +36,53 @@ _SECRETS = [
 ]
 
 
-def _file_key(change_id: int, path: str) -> str:
-    return f"{change_id}:{path}"
+def _display_names(conn, ids=None) -> dict[int, str]:
+    """{staff id: display name} from MongoDB; everyone when `ids` is None."""
+    filt = {} if ids is None else {"id": {"$in": sorted({i for i in ids if i})}}
+    return {r["id"]: r["display_name"] for r in conn["staff"].find(filt, {"id": 1, "display_name": 1})}
 
 
 # ── loading ───────────────────────────────────────────────────────────────────
 
-def get(conn, change_id: int, repo_id: int) -> dict:
-    c = db.strip(conn["code_changes"].find_one({"_id": change_id, "repo_id": repo_id}))
+def get(change_id: int, repo_id: int) -> dict:
+    c = store.one("SELECT * FROM code_changes WHERE id = ? AND repo_id = ?", (change_id, repo_id))
     if not c:
         raise HTTPException(404, "No change request by that number.")
     return c
 
 
-def files(conn, change_id: int) -> list[dict]:
-    return [db.strip(r) for r in conn["code_change_files"].find({"change_id": change_id}).sort("path", 1)]
+def files(change_id: int) -> list[dict]:
+    return store.rows("SELECT * FROM code_change_files WHERE change_id = ? ORDER BY path", (change_id,))
 
 
 def approvals(conn, c: dict) -> list[dict]:
     """Approvals that still count: given after the files last changed."""
-    rows = [db.strip(r) for r in conn["code_reviews"].find(
-        {"change_id": c["id"], "verdict": "approve", "at": {"$gte": c["files_at"]}})]
-    names = {s["id"]: s["display_name"] for s in conn["staff"].find(
-        {"id": {"$in": [r["staff_id"] for r in rows if r["staff_id"]]}}, {"id": 1, "display_name": 1})}
+    rows = store.rows("SELECT * FROM code_reviews WHERE change_id = ? AND verdict = 'approve' AND at >= ?",
+                      (c["id"], c["files_at"]))
+    names = _display_names(conn, [r["staff_id"] for r in rows])
     for r in rows:
         r["display_name"] = names.get(r["staff_id"])
     return rows
 
 
-def can_see(conn, c: dict, v: Viewer) -> bool:
+def can_see(c: dict, v: Viewer) -> bool:
     if c["author_id"] == v.id or v.merge_all:
         return True
-    return any(v.role_for(f["path"]) for f in files(conn, c["id"]))
+    return any(v.role_for(f["path"]) for f in files(c["id"]))
 
 
-def reviewer_role(conn, c: dict, v: Viewer) -> str | None:
+def reviewer_role(c: dict, v: Viewer) -> str | None:
     """How this person may review: 'all' (merge_all), 'owner', 'reviewer' or None."""
     if v.merge_all:
         return "all"
-    roles = {v.role_for(f["path"]) for f in files(conn, c["id"])} - {None}
+    roles = {v.role_for(f["path"]) for f in files(c["id"])} - {None}
     return "owner" if "owner" in roles else ("reviewer" if roles else None)
 
 
-def protected_in(conn, c: dict) -> list[str]:
+def protected_in(c: dict) -> list[str]:
     """The files in this change that sit inside a protected area."""
-    protected = protected_paths(conn, c["repo_id"])
-    return [f["path"] for f in files(conn, c["id"]) if guard_of(protected, f["path"])]
+    protected = protected_paths(c["repo_id"])
+    return [f["path"] for f in files(c["id"]) if guard_of(protected, f["path"])]
 
 
 def approval_state(conn, c: dict) -> dict:
@@ -86,8 +90,8 @@ def approval_state(conn, c: dict) -> dict:
     as approved only by the founder or someone placed inside its protection;
     `code.merge_all` doesn't reach in."""
     got = approvals(conn, c)
-    fs = files(conn, c["id"])
-    protected = protected_paths(conn, c["repo_id"])
+    fs = files(c["id"])
+    protected = protected_paths(c["repo_id"])
     uncovered = []
     for f in fs:
         answering = {sid for sid, _ in people_answering_for(conn, c["repo_id"], f["path"])}
@@ -114,20 +118,15 @@ def _is_founder(conn, staff_id: int) -> bool:
 
 # ── drafting ──────────────────────────────────────────────────────────────────
 
-def create(conn, row: dict, actor: dict, title: str, body: str) -> int:
+def create(row: dict, actor: dict, title: str, body: str) -> int:
     title = title.strip()[:120]
     if len(title) < 3:
         raise HTTPException(400, "Give the change a short title that says what it does.")
     now = db.now_iso()
     need = 2 if actor["level"] == "intern" else 1
-    cid = db.next_id(conn, "code_changes")
-    conn["code_changes"].insert_one({
-        "_id": cid, "id": cid, "repo_id": row["id"], "author_id": actor["id"], "title": title,
-        "body": body.strip()[:4000], "status": "draft", "need_approvals": need, "checks_json": "[]",
-        "created_at": now, "updated_at": now, "files_at": now, "submitted_at": None, "merged_by": None,
-        "merged_at": None, "merged_sha": "", "github": "", "github_detail": "",
-    })
-    return cid
+    return store.run("INSERT INTO code_changes (repo_id, author_id, title, body, need_approvals, created_at, updated_at, "
+                     "files_at) VALUES (?,?,?,?,?,?,?,?)",
+                     (row["id"], actor["id"], title, body.strip()[:4000], need, now, now, now)).lastrowid
 
 
 def _own_open(c: dict, actor: dict) -> None:
@@ -137,13 +136,13 @@ def _own_open(c: dict, actor: dict) -> None:
         raise HTTPException(409, "This change is no longer a draft.")
 
 
-def _limits(conn, change_id: int, path: str, new_text: str | None) -> None:
+def _limits(change_id: int, path: str, new_text: str | None) -> None:
     if new_text is not None:
         if "\0" in new_text:
             raise HTTPException(415, "Only text can go into the codebase.")
         if len(new_text.encode("utf-8")) > config.CODE_MAX_FILE_KB * 1024:
             raise HTTPException(413, f"A file can be at most {config.CODE_MAX_FILE_KB} KB here.")
-    others = [f for f in files(conn, change_id) if f["path"] != path]
+    others = [f for f in files(change_id) if f["path"] != path]
     if len(others) + 1 > config.CODE_MAX_FILES:
         raise HTTPException(413, f"A change can touch at most {config.CODE_MAX_FILES} files.")
     total = sum(len((f["new_text"] or "").encode("utf-8")) for f in others) + len((new_text or "").encode("utf-8"))
@@ -151,7 +150,7 @@ def _limits(conn, change_id: int, path: str, new_text: str | None) -> None:
         raise HTTPException(413, f"A change can be at most {config.CODE_MAX_CHANGE_MB} MB.")
 
 
-def put_file(conn, row: dict, v: Viewer, actor: dict, c: dict, body: dict) -> None:
+def put_file(row: dict, v: Viewer, actor: dict, c: dict, body: dict) -> None:
     """One file's edit. mode: segments (their lines only), full (whole file),
     new (create in a folder they can edit), delete."""
     _own_open(c, actor)
@@ -171,8 +170,8 @@ def put_file(conn, row: dict, v: Viewer, actor: dict, c: dict, body: dict) -> No
         if not (edit and level == "full"):
             raise HTTPException(403, "You can only add files inside a folder you can edit.")
         new_text = "\n".join(text.split_lines(body.get("text") or "")) + "\n"
-        _limits(conn, c["id"], path, new_text)
-        _store(conn, c, path, row["head_sha"], None, new_text, "")
+        _limits(c["id"], path, new_text)
+        _store(c, path, row["head_sha"], None, new_text, "")
         return
 
     base_sha = body.get("base_sha") or row["head_sha"]
@@ -188,16 +187,16 @@ def put_file(conn, row: dict, v: Viewer, actor: dict, c: dict, body: dict) -> No
     if mode == "delete":
         if not whole:
             raise HTTPException(403, "Deleting a file needs edit access to all of it.")
-        _limits(conn, c["id"], path, None)
-        _store(conn, c, path, base_sha, old_text, None, "")
+        _limits(c["id"], path, None)
+        _store(c, path, base_sha, old_text, None, "")
         return
 
     if mode == "full":
         if not whole:
             raise HTTPException(403, "You can edit only parts of this file. Edit those parts.")
         new_text = base.to_bytes(text.split_lines(body.get("text") or "")).decode("utf-8")
-        _limits(conn, c["id"], path, new_text)
-        _store(conn, c, path, base_sha, old_text, new_text, "")
+        _limits(c["id"], path, new_text)
+        _store(c, path, base_sha, old_text, new_text, "")
         return
 
     if mode != "segments":
@@ -225,24 +224,26 @@ def put_file(conn, row: dict, v: Viewer, actor: dict, c: dict, body: dict) -> No
     view = "" if whole or v.access(path, base.lines).read_full else json.dumps({
         "old": sorted(v.access(path, base.lines).visible() or []),
         "new": sorted({n for a, b in new_seen for n in range(a, b + 1)})})
-    _limits(conn, c["id"], path, new_text)
-    _store(conn, c, path, base_sha, old_text, new_text, view)
+    _limits(c["id"], path, new_text)
+    _store(c, path, base_sha, old_text, new_text, view)
 
 
-def _store(conn, c, path, base_sha, old_text, new_text, view) -> None:
+def _store(c, path, base_sha, old_text, new_text, view) -> None:
     now = db.now_iso()
-    key = _file_key(c["id"], path)
-    conn["code_change_files"].update_one(
-        {"_id": key}, {"$set": {"_id": key, "change_id": c["id"], "path": path, "base_sha": base_sha,
-                                "old_text": old_text, "new_text": new_text, "author_view": view}}, upsert=True)
-    conn["code_changes"].update_one({"_id": c["id"]}, {"$set": {"updated_at": now, "files_at": now, "checks_json": "[]"}})
+    with store.tx() as t:
+        t.run("INSERT INTO code_change_files (change_id, path, base_sha, old_text, new_text, author_view) "
+              "VALUES (?,?,?,?,?,?) ON CONFLICT (change_id, path) DO UPDATE SET base_sha = excluded.base_sha, "
+              "old_text = excluded.old_text, new_text = excluded.new_text, author_view = excluded.author_view",
+              (c["id"], path, base_sha, old_text, new_text, view))
+        t.run("UPDATE code_changes SET updated_at = ?, files_at = ?, checks_json = '[]' WHERE id = ?", (now, now, c["id"]))
 
 
-def drop_file(conn, actor: dict, c: dict, path: str) -> None:
+def drop_file(actor: dict, c: dict, path: str) -> None:
     _own_open(c, actor)
-    conn["code_change_files"].delete_one({"_id": _file_key(c["id"], path)})
     now = db.now_iso()
-    conn["code_changes"].update_one({"_id": c["id"]}, {"$set": {"updated_at": now, "files_at": now}})
+    with store.tx() as t:
+        t.run("DELETE FROM code_change_files WHERE change_id = ? AND path = ?", (c["id"], path))
+        t.run("UPDATE code_changes SET updated_at = ?, files_at = ? WHERE id = ?", (now, now, c["id"]))
 
 
 # ── checks ────────────────────────────────────────────────────────────────────
@@ -320,28 +321,29 @@ def look_closely(path: str, added: list[dict]) -> list[dict]:
 
 def submit(conn, row: dict, actor: dict, c: dict) -> dict:
     _own_open(c, actor)
-    fs = files(conn, c["id"])
+    fs = files(c["id"])
     if not fs:
         raise HTTPException(400, "Add at least one file edit first.")
     checks = run_checks(fs)
     now = db.now_iso()
-    conn["code_changes"].update_one({"_id": c["id"]}, {"$set": {"checks_json": json.dumps(checks), "updated_at": now}})
+    store.run("UPDATE code_changes SET checks_json = ?, updated_at = ? WHERE id = ?", (json.dumps(checks), now, c["id"]))
     failed = [ch for ch in checks if not ch["ok"]]
     if failed:
         raise HTTPException(400, f"{failed[0]['file']}: {failed[0]['check']} failed. {failed[0]['detail']}")
-    conn["code_changes"].update_one({"_id": c["id"]}, {"$set": {"status": "review", "submitted_at": now, "updated_at": now}})
+    store.run("UPDATE code_changes SET status = 'review', submitted_at = ?, updated_at = ? WHERE id = ?",
+              (now, now, c["id"]))
     who = set()
     for f in fs:
         who |= {sid for sid, _ in people_answering_for(conn, row["id"], f["path"])}
     if not who:
         who = set(perms_mod.holders(conn, "code.merge_all", "intern")) | set(service.founders(conn))
-    if protected_in(conn, c):
+    if protected_in(c):
         who |= set(service.founders(conn))              # protected code is the founder's call
     who.discard(actor["id"])
     notify.send(conn, who, "code.review", f"{actor['display_name']} sent a change for review",
                 c["title"], f"/console/code/changes/{c['id']}", c["id"])
     audit.record(conn, actor, "code.change_sent", f"{row['name']} #{c['id']}", c["title"], actor["ip"])
-    return get(conn, c["id"], row["id"])
+    return get(c["id"], row["id"])
 
 
 def review(conn, row: dict, v: Viewer, actor: dict, c: dict, verdict: str, body: str) -> None:
@@ -349,7 +351,7 @@ def review(conn, row: dict, v: Viewer, actor: dict, c: dict, verdict: str, body:
         raise HTTPException(400, "Unknown review.")
     body = (body or "").strip()[:4000]
     mine = c["author_id"] == actor["id"]
-    role = reviewer_role(conn, c, v)
+    role = reviewer_role(c, v)
     if verdict == "comment":
         if not (mine or role):
             raise HTTPException(403, "Only the author and the people answering for this code can comment.")
@@ -367,11 +369,11 @@ def review(conn, row: dict, v: Viewer, actor: dict, c: dict, verdict: str, body:
         if verdict in ("changes", "reject") and not body:
             raise HTTPException(400, "Say what needs to change, so they know what to do.")
     now = db.now_iso()
-    rid = db.next_id(conn, "code_reviews")
-    conn["code_reviews"].insert_one({"_id": rid, "id": rid, "change_id": c["id"], "staff_id": actor["id"],
-                                     "verdict": verdict, "body": body, "at": now})
     status = {"changes": "changes", "reject": "rejected"}.get(verdict, c["status"])
-    conn["code_changes"].update_one({"_id": c["id"]}, {"$set": {"status": status, "updated_at": now}})
+    with store.tx() as t:
+        t.run("INSERT INTO code_reviews (change_id, staff_id, verdict, body, at) VALUES (?,?,?,?,?)",
+              (c["id"], actor["id"], verdict, body, now))
+        t.run("UPDATE code_changes SET status = ?, updated_at = ? WHERE id = ?", (status, now, c["id"]))
     if not mine and c["author_id"]:
         words = {"approve": "approved", "changes": "asked for changes to", "reject": "rejected",
                  "comment": "commented on"}[verdict]
@@ -380,12 +382,12 @@ def review(conn, row: dict, v: Viewer, actor: dict, c: dict, verdict: str, body:
     audit.record(conn, actor, f"code.change_{verdict}", f"{row['name']} #{c['id']}", body[:200], actor["ip"])
 
 
-def withdraw(conn, actor: dict, c: dict) -> None:
+def withdraw(actor: dict, c: dict) -> None:
     if c["author_id"] != actor["id"]:
         raise HTTPException(403, "Only the author can withdraw it.")
     if c["status"] in ("merged", "rejected", "withdrawn"):
         raise HTTPException(409, "It's already closed.")
-    conn["code_changes"].update_one({"_id": c["id"]}, {"$set": {"status": "withdrawn", "updated_at": db.now_iso()}})
+    store.run("UPDATE code_changes SET status = 'withdrawn', updated_at = ? WHERE id = ?", (db.now_iso(), c["id"]))
 
 
 def can_merge(conn, c: dict, v: Viewer) -> tuple[bool, str]:
@@ -393,8 +395,8 @@ def can_merge(conn, c: dict, v: Viewer) -> tuple[bool, str]:
         return False, "It isn't waiting for review."
     if c["author_id"] == v.id and not v.founder:
         return False, "Someone else merges your change."
-    fs = files(conn, c["id"])
-    walled = protected_in(conn, c)
+    fs = files(c["id"])
+    walled = protected_in(c)
     if walled and not v.founder:
         return False, f"It touches protected code ({walled[0]}), so only the founder merges it."
     if not (v.merge_all or all(v.role_for(f["path"]) == "owner" for f in fs)):
@@ -417,7 +419,7 @@ def merge(conn, row: dict, v: Viewer, actor: dict, c: dict, override: bool) -> d
     ok, why = can_merge(conn, c, v)
     if not ok and not (override and v.founder and c["status"] == "review"):
         raise HTTPException(409, why)
-    fs = files(conn, c["id"])
+    fs = files(c["id"])
     with gitops.lock(row["id"]):
         # Level with GitHub first, so the merge lands on what's really there.
         try:
@@ -427,7 +429,7 @@ def merge(conn, row: dict, v: Viewer, actor: dict, c: dict, override: bool) -> d
         except gitops.GitError as e:
             raise HTTPException(502, f"Couldn't reach GitHub before merging: {e}")
         if old_head != head:
-            service.remap(conn, row["id"], old_head, head)
+            service.remap(row["id"], old_head, head)
         writes, conflicts = {}, []
         for f in fs:
             current = gitops.show(row["id"], head, f["path"])
@@ -455,7 +457,7 @@ def merge(conn, row: dict, v: Viewer, actor: dict, c: dict, override: bool) -> d
                              for p, d in writes.items() if p not in conflicts])
         broken = [ch for ch in checks if not ch["ok"]]
         if conflicts or broken:
-            conn["code_changes"].update_one({"_id": c["id"]}, {"$set": {"status": "conflict", "updated_at": db.now_iso()}})
+            store.run("UPDATE code_changes SET status = 'conflict', updated_at = ? WHERE id = ?", (db.now_iso(), c["id"]))
             what = (f"Someone changed {conflicts[0]} on GitHub in the same place." if conflicts
                     else f"After combining with the latest code, {broken[0]['file']} fails: {broken[0]['detail']}")
             notify.send(conn, [c["author_id"]], "code.conflict", "Your change needs redoing on the latest code",
@@ -465,7 +467,7 @@ def merge(conn, row: dict, v: Viewer, actor: dict, c: dict, override: bool) -> d
                  {"display_name": "Former team member", "email": config.CODE_COMMITTER_EMAIL})
         approved = ", ".join(approval_state(conn, c)["by"]) or ("nobody (founder override)" if override else "nobody")
         message = (f"{c['title']}\n\n{c['body']}\n\n" if c["body"] else f"{c['title']}\n\n") + \
-                  f"Change #{c['id']} in XOS1 Terminal. Approved by {approved}. Merged by {actor['display_name']}.\n"
+                  f"Change #{c['id']} in XiteAI Terminal. Approved by {approved}. Merged by {actor['display_name']}.\n"
         try:
             sha = gitops.commit(row["id"], writes, author["display_name"], author["email"], message)
         except gitops.GitError as e:
@@ -480,19 +482,20 @@ def merge(conn, row: dict, v: Viewer, actor: dict, c: dict, override: bool) -> d
                 remote = sha                                  # the guard's memory moves with our own push
             except gitops.GitError as e:
                 github, detail = "failed", f"Merged here; GitHub push failed ({e}). It retries on the next sync."
-        service.remap(conn, row["id"], head, sha)
+        service.remap(row["id"], head, sha)
     now = db.now_iso()
-    conn["code_repos"].update_one({"_id": row["id"]}, {"$set": {"head_sha": sha, "remote_sha": remote, "last_sync_at": now}})
-    conn["code_changes"].update_one({"_id": c["id"]}, {"$set": {"status": "merged", "merged_by": actor["id"],
-                                                               "merged_at": now, "merged_sha": sha, "github": github,
-                                                               "github_detail": detail, "updated_at": now}})
+    with store.tx() as t:
+        t.run("UPDATE code_repos SET head_sha = ?, remote_sha = ?, last_sync_at = ? WHERE id = ?",
+              (sha, remote, now, row["id"]))
+        t.run("UPDATE code_changes SET status = 'merged', merged_by = ?, merged_at = ?, merged_sha = ?, github = ?, "
+              "github_detail = ?, updated_at = ? WHERE id = ?", (actor["id"], now, sha, github, detail, now, c["id"]))
     if c["author_id"] != actor["id"]:
         notify.send(conn, [c["author_id"]], "code.merged", f"{actor['display_name']} merged your change",
                     c["title"], f"/console/code/changes/{c['id']}", c["id"])
     notify.clear(conn, "code.review", c["id"])
     audit.record(conn, actor, "code.change_merged", f"{row['name']} #{c['id']}",
                  ("founder override; " if override and not ok else "") + f"{sha[:10]} {github}", actor["ip"])
-    return get(conn, c["id"], row["id"])
+    return get(c["id"], row["id"])
 
 
 # ── undo and restore: new changes, reviewed like any other ────────────────────
@@ -524,15 +527,15 @@ def _open_as_change(conn, row: dict, v: Viewer, actor: dict, title: str, body: s
         raise HTTPException(409, "There's nothing to change: the code already looks like that.")
     if "code.request" not in v.perms and not v.founder:
         raise HTTPException(403, "Your level doesn't include sending changes.")
-    cid = create(conn, row, actor, title, body)
-    c = get(conn, cid, row["id"])
+    cid = create(row, actor, title, body)
+    c = get(cid, row["id"])
     for path, (old, new) in writes.items():
-        _limits(conn, cid, path, new)
-        _store(conn, c, path, row["head_sha"], old, new, "")
+        _limits(cid, path, new)
+        _store(c, path, row["head_sha"], old, new, "")
     try:
-        return submit(conn, row, actor, get(conn, cid, row["id"]))
+        return submit(conn, row, actor, get(cid, row["id"]))
     except HTTPException:
-        return get(conn, cid, row["id"])            # a failed check leaves it as a draft, with the reason on it
+        return get(cid, row["id"])            # a failed check leaves it as a draft, with the reason on it
 
 
 def undo(conn, row: dict, v: Viewer, actor: dict, sha: str) -> dict:
@@ -587,7 +590,7 @@ def undo(conn, row: dict, v: Viewer, actor: dict, sha: str) -> dict:
         raise HTTPException(409, f"Later changes touched the same lines in {tangled[0]}"
                                  + (f" and {len(tangled) - 1} more" if len(tangled) > 1 else "")
                                  + ". Undo those first, or change it by hand.")
-    changes, _ = history_links(conn, row)
+    changes, _ = history_links(row)
     origin = f"change #{changes[c['sha']]['id']}" if c["sha"] in changes else c["sha"][:10]
     body = (f"Takes back {origin}, \"{c['subject']}\" by {c['author']} on {c['at'][:10]}. "
             f"Anything written since stays as it is.")
@@ -617,17 +620,17 @@ def restore(conn, row: dict, v: Viewer, actor: dict, path: str, rev: str) -> dic
                            {path: (_decode(now, path), _decode(then, path))})
 
 
-def history_links(conn, row: dict) -> tuple[dict, dict]:
+def history_links(row: dict) -> tuple[dict, dict]:
     from .history import _links
-    return _links(conn, row)
+    return _links(row)
 
 
 # ── comments on exact lines ───────────────────────────────────────────────────
 
-def _file_view(conn, v: Viewer, c: dict, path: str) -> tuple[set | None, set | None] | None:
+def _file_view(v: Viewer, c: dict, path: str) -> tuple[set | None, set | None] | None:
     """(old lines, new lines) this person may see in this change's diff of
     `path`, None for all, or None overall when they can't see the file."""
-    f = next((f for f in files(conn, c["id"]) if f["path"] == path), None)
+    f = store.one("SELECT author_view FROM code_change_files WHERE change_id = ? AND path = ?", (c["id"], path))
     if not f:
         return None
     if v.level_for(path)[0] == "full":
@@ -640,50 +643,49 @@ def _file_view(conn, v: Viewer, c: dict, path: str) -> tuple[set | None, set | N
     return None
 
 
-def comment(conn, row: dict, v: Viewer, actor: dict, c: dict, path: str, side: str, line: int, body: str) -> None:
+def comment(conn, v: Viewer, actor: dict, c: dict, path: str, side: str, line: int, body: str) -> None:
     body = (body or "").strip()[:4000]
     if side not in ("new", "old") or line < 1 or not body:
         raise HTTPException(400, "Say which line, and write something.")
-    if not (c["author_id"] == actor["id"] or reviewer_role(conn, c, v)):
+    if not (c["author_id"] == actor["id"] or reviewer_role(c, v)):
         raise HTTPException(403, "Only the author and the people answering for this code can comment.")
-    view = _file_view(conn, v, c, path)
+    view = _file_view(v, c, path)
     if view is None:
         raise HTTPException(403, "That file isn't shared with you.")
     allowed = view[1] if side == "new" else view[0]
     if allowed is not None and line not in allowed:
         raise HTTPException(403, "That line isn't shared with you.")
-    cmid = db.next_id(conn, "code_comments")
-    conn["code_comments"].insert_one({"_id": cmid, "id": cmid, "change_id": c["id"], "path": path, "side": side,
-                                      "line": line, "body": body, "staff_id": actor["id"], "at": db.now_iso(),
-                                      "resolved_by": None, "resolved_at": None})
-    conn["code_changes"].update_one({"_id": c["id"]}, {"$set": {"updated_at": db.now_iso()}})
+    now = db.now_iso()
+    with store.tx() as t:
+        t.run("INSERT INTO code_comments (change_id, path, side, line, body, staff_id, at) VALUES (?,?,?,?,?,?,?)",
+              (c["id"], path, side, line, body, actor["id"], now))
+        t.run("UPDATE code_changes SET updated_at = ? WHERE id = ?", (now, c["id"]))
     if actor["id"] != c["author_id"]:
         who = [c["author_id"]]
     else:
-        who = [sid for sid in
-              set(conn["code_reviews"].distinct("staff_id", {"change_id": c["id"]})) |
-              set(conn["code_comments"].distinct("staff_id", {"change_id": c["id"]}))
-              if sid and sid != actor["id"]]
+        who = [r["staff_id"] for r in store.rows(
+            "SELECT staff_id FROM code_reviews WHERE change_id = ? UNION SELECT staff_id FROM code_comments WHERE change_id = ?",
+            (c["id"], c["id"])) if r["staff_id"] and r["staff_id"] != actor["id"]]
     notify.send(conn, who, "code.comment", f"{actor['display_name']} commented on line {line} of {path.rsplit('/', 1)[-1]}",
                 body[:140], f"/console/code/changes/{c['id']}", c["id"])
 
 
-def resolve_comment(conn, v: Viewer, actor: dict, c: dict, comment_id: int) -> None:
-    row = db.strip(conn["code_comments"].find_one({"_id": comment_id, "change_id": c["id"]}))
+def resolve_comment(v: Viewer, actor: dict, c: dict, comment_id: int) -> None:
+    row = store.one("SELECT * FROM code_comments WHERE id = ? AND change_id = ?", (comment_id, c["id"]))
     if not row:
         raise HTTPException(404, "No such comment.")
-    if not (actor["id"] in (row["staff_id"], c["author_id"]) or reviewer_role(conn, c, v)):
+    if not (actor["id"] in (row["staff_id"], c["author_id"]) or reviewer_role(c, v)):
         raise HTTPException(403, "The author, the commenter or a reviewer marks it done.")
-    conn["code_comments"].update_one({"_id": comment_id}, {"$set": {"resolved_by": actor["id"], "resolved_at": db.now_iso()}})
+    store.run("UPDATE code_comments SET resolved_by = ?, resolved_at = ? WHERE id = ?",
+              (actor["id"], db.now_iso(), comment_id))
 
 
-def comments_for(conn, v: Viewer, c: dict) -> list[dict]:
-    names = {r["id"]: r["display_name"] for r in conn["staff"].find({}, {"id": 1, "display_name": 1})}
+def comments_for(v: Viewer, c: dict, names: dict[int, str]) -> list[dict]:
     views: dict[str, tuple | None] = {}
     out = []
-    for r in (db.strip(x) for x in conn["code_comments"].find({"change_id": c["id"]}).sort("at", 1)):
+    for r in store.rows("SELECT * FROM code_comments WHERE change_id = ? ORDER BY at, id", (c["id"],)):
         if r["path"] not in views:
-            views[r["path"]] = _file_view(conn, v, c, r["path"])
+            views[r["path"]] = _file_view(v, c, r["path"])
         view = views[r["path"]]
         if view is None:
             continue
@@ -698,8 +700,8 @@ def comments_for(conn, v: Viewer, c: dict) -> list[dict]:
 
 # ── reading them ──────────────────────────────────────────────────────────────
 
-def card(conn, c: dict, names: dict) -> dict:
-    fs = files(conn, c["id"])
+def card(c: dict, names: dict) -> dict:
+    fs = files(c["id"])
     added = removed = 0
     for f in fs:
         a, r = text.stats(text.split_lines(f["old_text"] or ""), text.split_lines(f["new_text"] or ""))
@@ -710,25 +712,24 @@ def card(conn, c: dict, names: dict) -> dict:
 
 
 def listing(conn, row: dict, v: Viewer) -> list[dict]:
-    names = {r["id"]: r["display_name"] for r in conn["staff"].find({}, {"id": 1, "display_name": 1})}
+    rows = store.rows("SELECT * FROM code_changes WHERE repo_id = ? ORDER BY updated_at DESC LIMIT 300", (row["id"],))
+    names = _display_names(conn, [c["author_id"] for c in rows])
     out = []
-    rows = [db.strip(r) for r in conn["code_changes"].find({"repo_id": row["id"]}).sort("updated_at", -1).limit(300)]
     for c in rows:
         if c["status"] == "draft" and c["author_id"] != v.id:
             continue
-        if can_see(conn, c, v):
-            out.append(card(conn, c, names))
+        if can_see(c, v):
+            out.append(card(c, names))
     return out
 
 
 def detail(conn, row: dict, v: Viewer, c: dict) -> dict:
-    if not can_see(conn, c, v) or (c["status"] == "draft" and c["author_id"] != v.id):
+    if not can_see(c, v) or (c["status"] == "draft" and c["author_id"] != v.id):
         raise HTTPException(404, "No change request by that number.")
-    names = {r["id"]: r["display_name"] for r in conn["staff"].find({}, {"id": 1, "display_name": 1})}
     mine = c["author_id"] == v.id
-    role = reviewer_role(conn, c, v)
+    role = reviewer_role(c, v)
     out_files = []
-    for f in files(conn, c["id"]):
+    for f in files(c["id"]):
         old, new = text.split_lines(f["old_text"] or ""), text.split_lines(f["new_text"] or "")
         kind = "new" if f["old_text"] is None else "deleted" if f["new_text"] is None else "edited"
         a, r = text.stats(old, new)
@@ -746,17 +747,18 @@ def detail(conn, row: dict, v: Viewer, c: dict) -> dict:
             entry["hunks"], entry["hidden"] = [], True
         out_files.append(entry)
     ok, why = can_merge(conn, c, v)
-    review_rows = [db.strip(r) for r in conn["code_reviews"].find({"change_id": c["id"]}).sort("at", 1)]
-    review_names = {s["id"]: s["display_name"] for s in conn["staff"].find(
-        {"id": {"$in": [r["staff_id"] for r in review_rows if r["staff_id"]]}}, {"id": 1, "display_name": 1})}
-    return card(conn, c, names) | {
+    review_rows = store.rows("SELECT * FROM code_reviews WHERE change_id = ? ORDER BY at, id", (c["id"],))
+    comment_rows = store.rows("SELECT staff_id, resolved_by FROM code_comments WHERE change_id = ?", (c["id"],))
+    names = _display_names(conn, [c["author_id"], c["merged_by"]] + [r["staff_id"] for r in review_rows]
+                           + [x for r in comment_rows for x in (r["staff_id"], r["resolved_by"])])
+    return card(c, names) | {
         "body": c["body"], "created_at": c["created_at"], "merged_at": c["merged_at"], "merged_sha": c["merged_sha"],
         "merged_by": names.get(c["merged_by"]) if c["merged_by"] else None, "github_detail": c["github_detail"],
         "need_approvals": c["need_approvals"], "checks": json.loads(c["checks_json"] or "[]"),
         "file_list": out_files, "approval": approval_state(conn, c),
-        "reviews": [{"by": review_names.get(r["staff_id"]) or "someone removed", "verdict": r["verdict"],
+        "reviews": [{"by": names.get(r["staff_id"]) or "someone removed", "verdict": r["verdict"],
                     "body": r["body"], "at": r["at"]} for r in review_rows],
-        "comments": comments_for(conn, v, c),
+        "comments": comments_for(v, c, names),
         "can": {"edit": mine and c["status"] in OPEN, "submit": mine and c["status"] in OPEN,
                 "withdraw": mine and c["status"] not in ("merged", "rejected", "withdrawn"),
                 "review": bool(role) and not mine and c["status"] == "review",

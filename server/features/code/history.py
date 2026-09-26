@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 
 from ...core import config, db
-from . import gitops, service, text
+from . import gitops, service, store, text
 from .access import Viewer
 
 
@@ -23,11 +23,11 @@ def _rev(value: str) -> str:
         raise HTTPException(400, "That isn't a version this server knows.") from None
 
 
-def _links(conn, row: dict) -> tuple[dict, dict]:
+def _links(row: dict) -> tuple[dict, dict]:
     """{sha: change request} and {sha: checkpoint name}."""
     changes = {r["merged_sha"]: {"id": r["id"], "title": r["title"]}
-               for r in conn["code_changes"].find({"repo_id": row["id"], "merged_sha": {"$ne": ""}},
-                                                   {"id": 1, "title": 1, "merged_sha": 1})}
+               for r in store.rows("SELECT id, title, merged_sha FROM code_changes WHERE repo_id = ? AND merged_sha != ''",
+                                   (row["id"],))}
     return changes, gitops.tags(row["id"])
 
 
@@ -35,13 +35,13 @@ def _can_read_whole(v: Viewer, path: str) -> bool:
     return v.level_for(path)[0] == "full"
 
 
-def timeline(conn, row: dict, v: Viewer, path: str | None = None, skip: int = 0, limit: int = 40) -> dict:
+def timeline(row: dict, v: Viewer, path: str | None = None, skip: int = 0, limit: int = 40) -> dict:
     """Newest first. The repository's history shows a commit if at least one of
     its files is readable in full; a file's history needs that file."""
     if path is not None and not _can_read_whole(v, path):
         raise HTTPException(403, "A file's history is open to people who can read the whole file.")
     raw = gitops.log(row["id"], row["head_sha"], path=path, limit=limit, skip=skip)
-    changes, checkpoints = _links(conn, row)
+    changes, checkpoints = _links(row)
     out = []
     for c in raw:
         shown, hidden = [], 0
@@ -81,7 +81,7 @@ def _diffs(row: dict, v: Viewer, before_rev: str | None, after_rev: str, files: 
     return out
 
 
-def commit(conn, row: dict, v: Viewer, sha: str) -> dict:
+def commit(row: dict, v: Viewer, sha: str) -> dict:
     sha = _rev(sha)
     found = gitops.log(row["id"], sha, limit=1)
     if not found:
@@ -92,27 +92,27 @@ def commit(conn, row: dict, v: Viewer, sha: str) -> dict:
     files = _diffs(row, v, c["parents"][0] if c["parents"] else None, c["sha"], c["files"])
     if not any("hunks" in f or "binary" in f for f in files) and c["files"]:
         raise HTTPException(403, "None of the files in this change are shared with you.")
-    changes, checkpoints = _links(conn, row)
+    changes, checkpoints = _links(row)
     return {"sha": c["sha"], "short": c["sha"][:8], "author": c["author"], "at": c["at"], "subject": c["subject"],
             "body": c["body"], "files": files, "change": changes.get(c["sha"]), "checkpoint": checkpoints.get(c["sha"]),
             "can_undo": bool(c["parents"]) and (v.founder or "code.request" in v.perms)}
 
 
-def compare(conn, row: dict, v: Viewer, base: str, target: str = "HEAD") -> dict:
+def compare(row: dict, v: Viewer, base: str, target: str = "HEAD") -> dict:
     """Everything that changed between two versions (a checkpoint and now, say)."""
     base, target = _rev(base), _rev(target if target != "HEAD" else row["head_sha"])
     files = gitops.changed(row["id"], base, target)
     return {"base": base, "target": target, "files": _diffs(row, v, base, target, files), "count": len(files)}
 
 
-def blame(conn, row: dict, v: Viewer, path: str) -> dict:
+def blame(row: dict, v: Viewer, path: str) -> dict:
     """Who last changed each line, in runs of lines; only lines they may see."""
     level = v.level_for(path)[0]
     if level == "none":
         raise HTTPException(403, "You don't have access to this file.")
     t = service.load(row, path)
     visible = None if level == "full" else (v.access(path, t.lines).visible() or set())
-    changes, _ = _links(conn, row)
+    changes, _ = _links(row)
     runs = []
     for n, ln in enumerate(gitops.blame(row["id"], row["head_sha"], path), start=1):
         if visible is not None and n not in visible:

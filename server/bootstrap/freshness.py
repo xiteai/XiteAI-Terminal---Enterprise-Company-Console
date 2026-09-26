@@ -93,13 +93,13 @@ def build_ui() -> str:
     if not npm:
         return "stale (npm not found: install Node.js, then run `npm run build` in dashboard/)"
     if not (DASH / "node_modules").is_dir():
-        subprocess.run([npm, "install", "--no-audit", "--no-fund"], cwd=DASH, capture_output=True, timeout=900,
+        subprocess.run([npm, "install", "--no-audit", "--no-fund"], cwd=DASH, capture_output=True, timeout=900, stdin=subprocess.DEVNULL,
                        creationflags=NO_WINDOW)
     new = DASH / f".dist-next-{os.getpid()}"
     shutil.rmtree(new, ignore_errors=True)
     try:
         p = subprocess.run([npm, "run", "build", "--", "--outDir", new.name, "--emptyOutDir"], cwd=DASH,
-                           capture_output=True, timeout=600, creationflags=NO_WINDOW)
+                           capture_output=True, timeout=600, stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
         if p.returncode != 0 or not (new / "index.html").exists():
             out = (p.stderr or p.stdout).decode("utf-8", "replace").strip()
             return f"build failed: {out[-600:]}"

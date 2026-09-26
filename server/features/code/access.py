@@ -12,14 +12,15 @@ their edge. Only a grant or role placed inside one reaches in, and only the
 founder can place those.
 
 Resolved per file into: the whole file, some line ranges, or nothing. The
-server sends only what resolves; the UI never gets a line it may not show."""
+server sends only what resolves; the UI never gets a line it may not show.
+
+Codebase records come from store (SQLite); people from MongoDB (`conn`)."""
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass, field
 
 from ...core import db
-from . import text
+from . import store, text
 
 
 def covers(scope: str, path: str) -> bool:
@@ -49,37 +50,6 @@ class FileAccess:
         return {n for s, e, _ in self.ranges for n in range(s, e + 1)}
 
 
-def _my_items(conn, repo_id: int, staff_id: int) -> list[dict]:
-    """One row per (grant, item) the grant reaches — an item straight on the
-    grant, or (when the grant is for a feature) one of that feature's items —
-    each carrying its OWN grant's `can_edit` (the same item can appear twice,
-    with different `can_edit`, if two grants both reach it: that matches what
-    the original join produced, row for row)."""
-    now = db.now_iso()
-    grants = [db.strip(g) for g in conn["code_grants"].find(
-        {"repo_id": repo_id, "staff_id": staff_id, "$or": [{"expires_at": None}, {"expires_at": {"$gt": now}}]})]
-    if not grants:
-        return []
-    grant_ids = [g["id"] for g in grants]
-    feature_ids = list({g["feature_id"] for g in grants if g["feature_id"]})
-    or_clauses = [{"grant_id": {"$in": grant_ids}}]
-    if feature_ids:
-        or_clauses.append({"feature_id": {"$in": feature_ids}})
-    items = [db.strip(i) for i in conn["code_items"].find({"missing": False, "$or": or_clauses})]
-    by_grant = defaultdict(list)
-    by_feature = defaultdict(list)
-    for it in items:
-        if it.get("grant_id"):
-            by_grant[it["grant_id"]].append(it)
-        if it.get("feature_id"):
-            by_feature[it["feature_id"]].append(it)
-    out = []
-    for g in grants:
-        for it in by_grant[g["id"]] + (by_feature[g["feature_id"]] if g["feature_id"] else []):
-            out.append({**it, "can_edit": g["can_edit"]})
-    return out
-
-
 class Viewer:
     """One person's reach in one repository, loaded once per request."""
 
@@ -90,9 +60,14 @@ class Viewer:
         self.founder = self.level == "founder"
         self.read_all = self.founder or "code.read_all" in self.perms
         self.merge_all = self.founder or "code.merge_all" in self.perms
-        self.protected = protected_paths(conn, repo_id)
-        self.items = _my_items(conn, repo_id, self.id)
-        self.roles = roles_of(conn, repo_id, self.id)
+        self.protected = protected_paths(repo_id)
+        self.items = store.rows("""
+            SELECT i.kind, i.path, i.line_start, i.line_end, i.symbol, g.can_edit
+              FROM code_grants g
+              JOIN code_items i ON i.grant_id = g.id OR (g.feature_id IS NOT NULL AND i.feature_id = g.feature_id)
+             WHERE g.repo_id = ? AND g.staff_id = ? AND i.missing = 0
+               AND (g.expires_at IS NULL OR g.expires_at > ?)""", (repo_id, self.id, db.now_iso()))
+        self.roles = roles_of(repo_id, self.id)
 
     # ── protected paths ─────────────────────────────────────────────────────
     def guarded(self, path: str) -> str | None:
@@ -169,28 +144,23 @@ def resolve(item: dict, path: str, lines: list[str]) -> tuple[int, int] | None:
     return None
 
 
-def roles_of(conn, repo_id: int, staff_id: int) -> list[tuple[str, str]]:
+def roles_of(repo_id: int, staff_id: int) -> list[tuple[str, str]]:
     """[(role, folder-or-file scope)]. A feature someone owns counts as every
     folder and file in it (a function or lines inside a file count as that
     whole file: reviewing needs the file around the change)."""
     out = []
-    owner_rows = [db.strip(r) for r in conn["code_owners"].find({"repo_id": repo_id, "staff_id": staff_id})]
-    feature_ids = [r["feature_id"] for r in owner_rows if r["feature_id"]]
-    items_by_feature = defaultdict(list)
-    if feature_ids:
-        for it in conn["code_items"].find({"feature_id": {"$in": feature_ids}, "missing": False}, {"feature_id": 1, "path": 1}):
-            items_by_feature[it["feature_id"]].append(it["path"])
-    for r in owner_rows:
+    for r in store.rows("SELECT role, path, feature_id FROM code_owners WHERE repo_id = ? AND staff_id = ?",
+                        (repo_id, staff_id)):
         if r["feature_id"]:
-            for path in items_by_feature[r["feature_id"]]:
-                out.append((r["role"], path))
+            for it in store.rows("SELECT path FROM code_items WHERE feature_id = ? AND missing = 0", (r["feature_id"],)):
+                out.append((r["role"], it["path"]))
         else:
             out.append((r["role"], r["path"] or ""))
     return out
 
 
-def protected_paths(conn, repo_id: int) -> list[str]:
-    return [r["path"] for r in conn["code_protected"].find({"repo_id": repo_id}, {"path": 1})]
+def protected_paths(repo_id: int) -> list[str]:
+    return [r["path"] for r in store.rows("SELECT path FROM code_protected WHERE repo_id = ?", (repo_id,))]
 
 
 def guard_of(protected: list[str], path: str) -> str | None:
@@ -208,11 +178,14 @@ def people_answering_for(conn, repo_id: int, path: str) -> list[tuple[int, str]]
     """[(staff_id, role)] of active people who own or review `path` (inside a
     protected area, only roles placed inside it count)."""
     out = {}
-    protected = protected_paths(conn, repo_id)
-    owner_staff_ids = conn["code_owners"].distinct("staff_id", {"repo_id": repo_id})
-    active_ids = conn["staff"].distinct("id", {"id": {"$in": owner_staff_ids}, "status": "active"})
-    for staff_id in active_ids:
-        for role, scope in roles_of(conn, repo_id, staff_id):
+    protected = protected_paths(repo_id)
+    owner_ids = [r["staff_id"] for r in store.rows("SELECT DISTINCT staff_id FROM code_owners WHERE repo_id = ?",
+                                                   (repo_id,))]
+    active = set(conn["staff"].distinct("id", {"id": {"$in": owner_ids}, "status": "active"})) if owner_ids else set()
+    for staff_id in owner_ids:
+        if staff_id not in active:
+            continue
+        for role, scope in roles_of(repo_id, staff_id):
             if reaches(protected, scope, path):
                 if out.get(staff_id) != "owner":
                     out[staff_id] = role

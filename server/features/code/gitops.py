@@ -19,6 +19,8 @@ import threading
 import time
 from pathlib import Path
 
+import psutil
+
 from ...core import config
 
 _locks: dict[int, threading.Lock] = {}
@@ -27,6 +29,106 @@ _locks_guard = threading.Lock()
 
 class GitError(Exception):
     pass
+
+
+# ── live progress while cloning, and cancelling it ────────────────────────────
+# git prints its progress as a percentage, redrawing the same terminal line
+# with \r — read raw and split on \r or \n to catch every update, not just the
+# handful of lines that end in \n. Kept in memory only (repo_card() reads it
+# while status is "cloning"): nothing here needs to survive a restart.
+_progress: dict[int, dict] = {}
+_progress_guard = threading.Lock()
+_procs: dict[int, subprocess.Popen] = {}
+_procs_guard = threading.Lock()
+_PCT = re.compile(r"(\d+)%")
+
+
+def _phase_of(line: str) -> str:
+    """'remote: Counting objects: 100% (...)' -> 'Counting objects', not just
+    'remote' (github reports its own-side steps with that prefix first)."""
+    line = line.removeprefix("remote:").strip()
+    return line.split(":")[0].strip() if ":" in line else line
+
+
+def _report(repo_id: int, line: str) -> None:
+    m = _PCT.search(line)
+    with _progress_guard:
+        p = _progress.setdefault(repo_id, {"started": time.time(), "pct": None})
+        p["note"] = line
+        p["phase"] = _phase_of(line)
+        if m:
+            p["pct"] = int(m.group(1))
+
+
+def progress(repo_id: int) -> dict | None:
+    """What a repository's clone is doing right now, for the progress bar —
+    None once it's finished (or never started)."""
+    with _progress_guard:
+        p = _progress.get(repo_id)
+        return {**p, "elapsed_s": round(time.time() - p["started"], 1)} if p else None
+
+
+def _clear_progress(repo_id: int) -> None:
+    with _progress_guard:
+        _progress.pop(repo_id, None)
+
+
+CLONE_SILENT_S = 120          # no output at all from git for this long: it's hung, not slow
+CLONE_MAX_S = 1800            # the whole copy, however much output it gives
+
+
+def _kill_tree(proc: subprocess.Popen) -> None:
+    """git spawns a helper for the network transfer (on Windows a separate
+    git-remote-https.exe); killing only the git.exe we started leaves that
+    helper running and holding the files about to be deleted. Kill the whole
+    tree, children first."""
+    try:
+        parent = psutil.Process(proc.pid)
+        family = parent.children(recursive=True) + [parent]
+    except psutil.Error:
+        family = []
+    for p in family:
+        try:
+            p.terminate()
+        except psutil.Error:
+            pass
+    _, alive = psutil.wait_procs(family, timeout=5)
+    for p in alive:
+        try:
+            p.kill()
+        except psutil.Error:
+            pass
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
+def cancel(repo_id: int) -> bool:
+    """Stop a clone in progress. True if there was one running to stop."""
+    with _procs_guard:
+        proc = _procs.get(repo_id)
+    if not proc or proc.poll() is not None:
+        return False
+    _kill_tree(proc)
+    return True
+
+
+def kill_orphans(repo_id: int) -> int:
+    """git processes still writing into this repository's folder with nobody
+    watching them (the server that started them restarted mid-copy). They'd
+    hold the folder and block a fresh copy. Returns how many were stopped."""
+    target = str(repo_dir(repo_id)).lower()
+    stopped = 0
+    for p in psutil.process_iter(["name", "cmdline"]):
+        try:
+            if (p.info["name"] or "").lower().startswith("git") and \
+                    target in " ".join(p.info["cmdline"] or []).lower():
+                p.kill()
+                stopped += 1
+        except psutil.Error:
+            pass
+    return stopped
 
 
 _SHA = re.compile(r"^[0-9a-f]{7,64}$")
@@ -89,8 +191,12 @@ def run(args: list[str], cwd: Path | None = None, url: str = "", check: bool = T
         input_bytes: bytes | None = None, timeout: int = 600) -> subprocess.CompletedProcess:
     env = _env(url)
     cmd = ["git", "-c", "core.autocrlf=false", "-c", "core.quotepath=false", *args]
+    # git never reads this server's stdin. Left inherited, it's a pipe a server
+    # thread is blocked reading (serving.py), and on Windows a process that so
+    # much as queries such a handle hangs forever: this froze every clone.
+    feed = {"input": input_bytes} if input_bytes is not None else {"stdin": subprocess.DEVNULL}
     try:
-        p = subprocess.run(cmd, cwd=cwd, env=env, input=input_bytes, capture_output=True, timeout=timeout)
+        p = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, timeout=timeout, **feed)
     except FileNotFoundError:
         raise GitError("git isn't installed on this server.") from None
     except subprocess.TimeoutExpired:
@@ -100,20 +206,112 @@ def run(args: list[str], cwd: Path | None = None, url: str = "", check: bool = T
     return p
 
 
-def out(args: list[str], cwd: Path, url: str = "") -> str:
+def out(args: list[str], cwd: Path | None, url: str = "") -> str:
     return run(args, cwd=cwd, url=url).stdout.decode("utf-8", "replace").strip()
 
 
 # ── clone and follow ──────────────────────────────────────────────────────────
 
+def default_branch(url: str) -> str | None:
+    """What GitHub calls this repository's default branch, without cloning it —
+    so 'Connect' never has to guess main vs. master vs. something else."""
+    try:
+        out_text = out(["ls-remote", "--symref", url, "HEAD"], cwd=None, url=url)
+    except GitError:
+        return None
+    m = re.search(r"^ref:\s+refs/heads/(\S+)\s+HEAD$", out_text, re.MULTILINE)
+    return m.group(1) if m else None
+
+
+def branches(url: str) -> list[str]:
+    """Every branch name GitHub actually has, for a clearer error than 'not found'."""
+    try:
+        out_text = out(["ls-remote", "--heads", url], cwd=None, url=url)
+    except GitError:
+        return []
+    names = []
+    for line in out_text.splitlines():
+        _, _, name = line.partition("refs/heads/")
+        if name:
+            names.append(name)
+    return names
+
+
 def clone(repo_id: int, url: str, branch: str) -> str:
     """Fresh clone into the repository's folder (a full clone: a partial one
-    makes git fetch skipped blobs behind our back whenever it lists sizes)."""
+    makes git fetch skipped blobs behind our back whenever it lists sizes).
+    Streams git's own progress into `progress(repo_id)` as it runs, and can be
+    stopped mid-way with `cancel(repo_id)`."""
     dest = repo_dir(repo_id)
     if dest.exists():
         raise GitError("That folder already exists on the server.")
     dest.parent.mkdir(parents=True, exist_ok=True)
-    run(["clone", "--branch", branch, "--single-branch", "--no-tags", url, str(dest)], url=url, timeout=1800)
+    cmd = ["git", "-c", "core.autocrlf=false", "-c", "core.quotepath=false", "clone", "--branch", branch,
+          "--single-branch", "--no-tags", "--progress", url, str(dest)]
+    with _progress_guard:                       # the timer runs from the click, not from git's first line
+        _progress[repo_id] = {"started": time.time(), "pct": None, "phase": "Cloning into", "note": ""}
+    try:
+        proc = subprocess.Popen(cmd, env=_env(url), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.PIPE)
+    except FileNotFoundError:
+        _clear_progress(repo_id)
+        raise GitError("git isn't installed on this server.") from None
+    with _procs_guard:
+        _procs[repo_id] = proc
+
+    # The watchdog: git can hang without printing anything, and a read that
+    # never returns never gets to check a deadline. This thread does, and
+    # kills git (which ends the read) on silence or on the overall limit.
+    last_output = [time.time()]
+    stopped_by: list[str] = []
+    started = time.time()
+
+    def watch() -> None:
+        while proc.poll() is None:
+            now = time.time()
+            if now - last_output[0] > CLONE_SILENT_S:
+                stopped_by.append(f"GitHub stopped responding for {CLONE_SILENT_S} seconds, so the copy was stopped. "
+                                  "Try again.")
+            elif now - started > CLONE_MAX_S:
+                stopped_by.append("The copy took longer than 30 minutes and was stopped.")
+            if stopped_by:
+                _kill_tree(proc)
+                return
+            time.sleep(1)
+    threading.Thread(target=watch, daemon=True, name=f"clone-watch-{repo_id}").start()
+
+    tail: list[str] = []
+    buf = b""
+    try:
+        while True:
+            chunk = proc.stderr.read1(4096)     # whatever has arrived, now: progress in real time
+            if not chunk:
+                break
+            last_output[0] = time.time()
+            buf += chunk
+            while b"\r" in buf or b"\n" in buf:
+                cut = min(i for i in (buf.find(b"\r"), buf.find(b"\n")) if i != -1)
+                line, buf = buf[:cut].decode("utf-8", "replace").strip(), buf[cut + 1:]
+                if line:
+                    tail.append(line)
+                    del tail[:-40]
+                    _report(repo_id, line)
+        proc.wait(timeout=30)
+    finally:
+        proc.stderr.close()
+        with _procs_guard:
+            _procs.pop(repo_id, None)
+        _clear_progress(repo_id)
+    if stopped_by:
+        remove(repo_id)
+        raise GitError(stopped_by[0])
+    if proc.returncode != 0:
+        cleaned = _clean_error("\n".join(tail[-30:]))
+        if "remote branch" in cleaned.lower() and "not found" in cleaned.lower():
+            have = branches(url)
+            hint = f" This repository's branches are: {', '.join(have[:8])}." if have else ""
+            raise GitError(f"There's no branch called \"{branch}\" on GitHub.{hint}")
+        raise GitError(cleaned)
     run(["config", "core.autocrlf", "false"], cwd=dest)
     return head(repo_id)
 
@@ -276,8 +474,8 @@ def grep(repo_id: int, rev: str, needle: str, cap: int = 3000) -> tuple[list[tup
     prefix = f"{rev}:"
     hits, more = [], False
     try:
-        p = subprocess.Popen(cmd, cwd=repo_dir(repo_id), env=_env(""), stdout=subprocess.PIPE,
-                             stderr=subprocess.DEVNULL)
+        p = subprocess.Popen(cmd, cwd=repo_dir(repo_id), env=_env(""), stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     except FileNotFoundError:
         raise GitError("git isn't installed on this server.") from None
     try:
