@@ -8,6 +8,7 @@ import Field from "../../../components/Field.jsx";
 import Modal from "../../../components/Modal.jsx";
 import Switch from "../../../components/Switch.jsx";
 import { useToast } from "../../../components/Toast.jsx";
+import CloneProgress from "./CloneProgress.jsx";
 
 const mb = (n) => (n >= 1073741824 ? `${(n / 1073741824).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1048576))} MB`);
 
@@ -15,7 +16,7 @@ const mb = (n) => (n >= 1073741824 ? `${(n / 1073741824).toFixed(1)} GB` : `${Ma
 // everything that keeps them safe.
 export default function Repos({ data, reload }) {
   const toast = useToast();
-  const [form, setForm] = useState({ name: "", url: "", branch: "main" });
+  const [form, setForm] = useState({ name: "", url: "", branch: "" });
   const [busy, setBusy] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const ready = data.items.filter((r) => r.status === "ready");
@@ -28,7 +29,7 @@ export default function Repos({ data, reload }) {
     finally { setBusy(null); reload(); }
   };
   const connect = () => call("connect", () => api.post("/api/code/repos", form), "Copying it from GitHub. A big repository takes a few minutes.")
-    .then((ok) => ok && setForm({ name: "", url: "", branch: "main" }));
+    .then((ok) => ok && setForm({ name: "", url: "", branch: "" }));
 
   return (
     <div>
@@ -69,17 +70,25 @@ export default function Repos({ data, reload }) {
                     <td className="mono code-url" title={r.remote_url}>{r.remote_url.replace("https://github.com/", "")}</td>
                     <td>
                       {r.status === "ready" ? (r.status_detail || (r.pushes ? "Following GitHub" : "Merges stay here until a GitHub token is set"))
-                        : r.status === "cloning" ? "Copying from GitHub…" : <span className="form-error">{r.status_detail}</span>}
+                        : r.status === "cloning" ? <CloneProgress progress={r.progress} compact />
+                        : <span className="form-error">{r.status_detail}</span>}
                     </td>
                     <td title={r.last_sync_at ? dateTime(r.last_sync_at) : ""}>{r.last_sync_at ? ago(r.last_sync_at) : "–"}</td>
                     <td className="r code-actions">
                       {data.can_sync && r.status === "ready" && (
                         <Button size="sm" busy={busy === `sync${r.id}`} onClick={() => call(`sync${r.id}`, () => api.post(`/api/code/repos/${r.id}/sync`), "Up to date with GitHub.")}>Sync now</Button>
                       )}
-                      {data.can_connect && <button className="text-link" onClick={() => setConfirm({
-                        title: `Remove ${r.name}?`, text: "Its grants, features, change requests and checkpoints here go with it. GitHub itself is untouched.",
-                        button: "Remove", run: () => call("remove", () => api.del(`/api/code/repos/${r.id}`), `${r.name} removed. GitHub is untouched.`),
-                      })}>Remove</button>}
+                      {data.can_connect && (r.status === "cloning" ? (
+                        <button className="text-link" onClick={() => setConfirm({
+                          title: `Cancel copying ${r.name}?`, text: "Stops right away. Nothing was kept, and GitHub itself is untouched.",
+                          button: "Cancel it", run: () => call(`remove${r.id}`, () => api.del(`/api/code/repos/${r.id}`), `Cancelled. ${r.name} wasn't added.`),
+                        })}>Cancel</button>
+                      ) : (
+                        <button className="text-link" onClick={() => setConfirm({
+                          title: `Remove ${r.name}?`, text: "Its grants, features, change requests and checkpoints here go with it. GitHub itself is untouched.",
+                          button: "Remove", run: () => call(`remove${r.id}`, () => api.del(`/api/code/repos/${r.id}`), `${r.name} removed. GitHub is untouched.`),
+                        })}>Remove</button>
+                      ))}
                     </td>
                   </tr>
                 ))}
@@ -98,7 +107,8 @@ export default function Repos({ data, reload }) {
           <div className="code-form code-connect">
             <div className="code-two">
               <Field label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="XOS1" />
-              <Field label="Branch" value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })} />
+              <Field label="Branch" value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })}
+                placeholder="Leave blank to use its default" />
             </div>
             <Field label="GitHub address" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })}
               placeholder="https://github.com/you/repository" />
@@ -106,7 +116,7 @@ export default function Repos({ data, reload }) {
               <span>
                 For a private repository, and for merges to reach GitHub, the server's <span className="code">.env</span> needs{" "}
                 <span className="code">GITHUB_TOKEN</span>: a fine-grained token with <b>Contents: Read and write</b> on this one repository.
-                It's never written to disk. On GitHub, also turn on branch protection for <b>{form.branch || "main"}</b> with
+                It's never written to disk. On GitHub, also turn on branch protection for <b>{form.branch || "its default branch"}</b> with
                 force-pushes and deletion blocked.
               </span>
             </div>

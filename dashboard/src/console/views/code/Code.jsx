@@ -16,6 +16,7 @@ import Files from "./Files.jsx";
 import Gate from "./Gate.jsx";
 import GiveAccess from "./GiveAccess.jsx";
 import History from "./History.jsx";
+import CloneProgress from "./CloneProgress.jsx";
 import Repos from "./Repos.jsx";
 import Search from "./Search.jsx";
 import "./Code.css";
@@ -127,7 +128,12 @@ export default function Code() {
 function NoRepo({ data, onSetUp }) {
   const setting = data.items.find((r) => r.status === "cloning");
   const failed = data.items.find((r) => r.status === "failed");
-  if (setting) return <Empty title={`Copying ${setting.name} from GitHub…`}>A big repository takes a few minutes. This page updates on its own.</Empty>;
+  if (setting) return (
+    <div className="empty">
+      <p className="empty-title">{`Copying ${setting.name} from GitHub…`}</p>
+      <div className="empty-action"><CloneProgress progress={setting.progress} /></div>
+    </div>
+  );
   return (
     <Empty title="No codebase is connected yet."
       action={data.can_connect && <button className="text-link" onClick={onSetUp}>Connect a GitHub repository</button>}>
