@@ -1,0 +1,144 @@
+/* The Workplace. Same vocabulary as the rest of the console: hairlines, grey
+   for anything secondary, ink for what matters. */
+
+/* Leave balances: the number first, because that's what you came to see. */
+.wp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.wp-stat {
+  display: flex; flex-direction: column; gap: 2px; padding: 16px 18px;
+  border: 1px solid var(--border); border-radius: var(--r-card); background: var(--surface);
+}
+.wp-stat-n { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.028em; color: var(--ink); line-height: 1.1; }
+.wp-stat-l { font-size: 0.8125rem; font-weight: 500; color: var(--ink); }
+.wp-stat-s { font-size: 0.75rem; color: var(--muted); }
+
+/* Filing forms: a row of fields that wraps, and the button under them. */
+.wp-form { display: flex; flex-direction: column; gap: 14px; }
+.wp-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px 14px; align-items: start; }
+.wp-wide { grid-column: 1 / -1; }
+.wp-submit { display: flex; justify-content: flex-end; gap: 8px; }
+
+.wp-sub { color: var(--muted); font-weight: 400; }
+.wp-fine { color: var(--bad); font-weight: 500; }
+.wp-actions { display: inline-flex; gap: 6px; justify-content: flex-end; }
+.wp-loading { display: grid; place-items: center; padding: 64px 0; }
+.wp-para { font-size: 0.875rem; color: var(--text); line-height: 1.6; max-width: 70ch; }
+.wp-para + .wp-para { margin-top: 10px; }
+.wp-handbook { display: grid; gap: 12px; }
+
+/* Deciding: what you're about to decide, then the note that goes with it. */
+.wp-decide { display: flex; flex-direction: column; gap: 10px; }
+.wp-decide-what { font-size: 0.9375rem; font-weight: 600; color: var(--ink); letter-spacing: -0.014em; }
+.wp-decide-note {
+  font-size: 0.8125rem; color: var(--text); line-height: 1.55;
+  padding: 10px 12px; border-left: 2px solid var(--border-2); background: var(--surface-2); border-radius: 0 8px 8px 0;
+}
+
+.lc {
+  --lc-picked: #2563eb; --lc-picked-hover: #1d4ed8;
+  --lc-approved: #16a34a; --lc-approved-hover: #15803d;
+  --lc-pending: #d97706; --lc-pending-soft: #fffbeb; --lc-pending-ink: #92400e;
+  --lc-holiday-soft: #f5f3ff; --lc-holiday-ink: #6d28d9;
+}
+
+/* Leave: a calendar on the left, what you're doing with it on the right. */
+.lc-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr); gap: 16px; align-items: start; }
+.lc-card { overflow: hidden; }
+.lc-side { display: flex; flex-direction: column; gap: 16px; }
+
+.lc { padding: 18px 20px 16px; }
+.lc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.lc-month { font-size: 1rem; font-weight: 600; letter-spacing: -0.016em; color: var(--ink); }
+.lc-nav { display: flex; align-items: center; gap: 4px; }
+.lc-nav button { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: var(--muted); transition: background-color 0.12s, color 0.12s; }
+.lc-nav button:hover { background: var(--hover); color: var(--ink); }
+.lc-today { width: auto !important; padding: 0 10px; font-size: 0.75rem; font-weight: 500; }
+
+.lc-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 4px; }
+.lc-weekdays span { text-align: center; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--subtle); padding-bottom: 6px; }
+
+.lc-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.lc-day {
+  position: relative; aspect-ratio: 1; display: flex; align-items: flex-start; justify-content: flex-end;
+  padding: 6px; border-radius: 9px; color: var(--text); font-size: 0.8125rem; font-variant-numeric: tabular-nums;
+  transition: background-color 0.12s, color 0.12s, box-shadow 0.12s;
+}
+.lc-day:hover:not(:disabled) { background: var(--hover); }
+.lc-day:disabled { color: var(--subtle); cursor: not-allowed; opacity: 0.45; }
+.lc-outside { color: var(--subtle); opacity: 0.5; }
+.lc-weekend:not(.lc-disabled) { color: var(--subtle); }
+.lc-today-cell { box-shadow: inset 0 0 0 1.5px var(--ink); font-weight: 600; }
+.lc-holiday { background: var(--surface-2); }
+.lc-dot { position: absolute; left: 8px; bottom: 7px; width: 4px; height: 4px; border-radius: 50%; background: var(--lc-holiday-ink); }
+
+/* Function gets colour here, on purpose: a leave calendar is read at a
+   glance, and green/amber/blue carry that faster than tone-on-tone ever
+   could. The rest of the console stays monochrome. */
+.lc-approved { background: var(--lc-approved); color: #fff; }
+.lc-approved:hover:not(:disabled) { background: var(--lc-approved-hover); }
+.lc-pending { background: var(--lc-pending-soft); box-shadow: inset 0 0 0 1.5px var(--lc-pending); color: var(--lc-pending-ink); }
+.lc-holiday:not(.lc-approved):not(.lc-pending) { background: var(--lc-holiday-soft); color: var(--lc-holiday-ink); }
+
+.lc-picked { background: var(--lc-picked); color: #fff; }
+.lc-picked:hover:not(:disabled) { background: var(--lc-picked-hover); }
+
+.lc-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--divider); }
+.lc-legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--muted); }
+.lc-sw { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+.lc-sw-picked { background: var(--lc-picked); }
+.lc-sw-approved { background: var(--lc-approved); }
+.lc-sw-pending { background: var(--lc-pending-soft); box-shadow: inset 0 0 0 1.5px var(--lc-pending); }
+.lc-sw-holiday { background: var(--lc-holiday-soft); }
+.lc-sw-weekend { background: var(--border); }
+
+.lc-upcoming { list-style: none; display: flex; flex-direction: column; }
+.lc-upcoming li { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-top: 1px solid var(--divider); }
+.lc-upcoming li:first-child { border-top: none; padding-top: 0; }
+.lc-up-when { flex: none; font-size: 0.8125rem; color: var(--ink); white-space: nowrap; }
+.lc-up-when span { color: var(--muted); font-weight: 400; }
+.lc-up-type { flex: 1; min-width: 0; font-size: 0.75rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.lc-holidays { border-top: 1px solid var(--divider); padding: 14px 20px 16px; }
+.lc-holidays-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.lc-holidays-head span { font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.02em; }
+.lc-add { display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; font-weight: 500; color: var(--ink); padding: 4px 8px; border-radius: 6px; }
+.lc-add:hover { background: var(--hover); }
+.lc-holiday-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-bottom: 10px; align-items: end; }
+.lc-holiday-list { list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.lc-holiday-list li { display: flex; align-items: center; gap: 10px; padding: 6px 2px; font-size: 0.8125rem; }
+.lc-holiday-list li span:first-child { flex: none; width: 60px; color: var(--muted); }
+.lc-holiday-label { flex: 1; color: var(--ink); }
+.lc-holiday-list button { color: var(--subtle); padding: 4px; border-radius: 6px; }
+.lc-holiday-list button:hover { color: var(--bad); background: var(--bad-soft); }
+
+@media (max-width: 860px) {
+  .lc-layout { grid-template-columns: 1fr; }
+}
+
+/* Tickets: a list of rows, each the whole link. */
+.wp-tickets { list-style: none; }
+.wp-ticket {
+  display: flex; align-items: center; gap: 14px; padding: 12px 18px;
+  border-bottom: 1px solid var(--divider); transition: background-color 0.12s;
+}
+.wp-tickets li:last-child .wp-ticket { border-bottom: none; }
+.wp-ticket:hover { background: var(--hover); }
+.wp-ticket-ref { flex: none; font-size: 0.75rem; color: var(--subtle); width: 62px; }
+.wp-ticket-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; line-height: 1.35; }
+.wp-ticket-main b { font-size: 0.8125rem; font-weight: 500; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-ticket-main span { font-size: 0.75rem; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-ticket-when { flex: none; font-size: 0.75rem; color: var(--subtle); text-align: right; }
+
+/* The thread on one ticket. */
+.wp-thread { list-style: none; }
+.wp-thread li { padding: 16px 18px; border-bottom: 1px solid var(--divider); }
+.wp-thread li:last-child { border-bottom: none; }
+.wp-msg-who { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.wp-msg-who b { font-size: 0.8125rem; font-weight: 600; color: var(--ink); }
+.wp-msg-who span { font-size: 0.75rem; color: var(--subtle); }
+.wp-msg-body { font-size: 0.875rem; color: var(--text); line-height: 1.6; white-space: pre-wrap; }
+
+@media (max-width: 640px) {
+  .wp-ticket-ref, .wp-ticket-when { display: none; }
+}
