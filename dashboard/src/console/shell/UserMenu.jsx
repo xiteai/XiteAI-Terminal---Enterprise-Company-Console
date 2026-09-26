@@ -20,7 +20,7 @@ export default function UserMenu() {
   return (
     <div className="um">
       <button className={cx("um-btn", open && "on")} onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <Avatar initials={u.initials} level={u.level} size={32} />
+        <Avatar src={u.avatar_url} initials={u.initials} level={u.level} size={32} />
         <span className="um-text">
           <b>{u.display_name}</b>
           <small>{u.level_label}{preview ? ` · previewing ${me.level_label}` : ""}</small>
