@@ -48,6 +48,14 @@ def careers():
     return _app()
 
 
+@router.get("/legal", include_in_schema=False)
+@router.get("/legal/{rest:path}", include_in_schema=False)
+def legal():
+    """The policies. Served by the app like any other public page — a policy
+    that 404s on a direct link is the same as an unpublished one."""
+    return _app()
+
+
 @router.get("/robots.txt", include_in_schema=False)
 def robots():
     """Crawlers get the public side and nothing else. The console is behind a
@@ -70,7 +78,10 @@ def sitemap():
     new posting can be found the day it goes up rather than whenever someone
     remembers to update a static file."""
     base = config.PUBLIC_BASE_URL.rstrip("/")
-    urls = [(f"{base}/", "weekly", "1.0"), (f"{base}/careers", "daily", "0.8")]
+    urls = [(f"{base}/", "weekly", "1.0"), (f"{base}/careers", "daily", "0.8"),
+            (f"{base}/legal", "monthly", "0.4"),
+            (f"{base}/legal/privacy", "monthly", "0.5"),
+            (f"{base}/legal/terms", "monthly", "0.5")]
     try:
         with db.connect() as conn:
             for row in conn["job_roles"].find({"status": "open"}, {"id": 1}):

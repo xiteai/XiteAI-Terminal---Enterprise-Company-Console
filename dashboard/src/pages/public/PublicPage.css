@@ -81,7 +81,6 @@
 .pub-foot a:hover { color: var(--ink); }
 .pub-foot-h { font-size: 0.75rem; color: var(--ink); font-weight: 600; margin-bottom: 2px; }
 .pub-foot-line { margin-top: 10px; max-width: 30ch; }
-.pub .entry-foot-in { border-top: 1px solid var(--divider); }
 
 @media (max-width: 900px) {
   .pub-hero { padding: 64px 16px 56px; }

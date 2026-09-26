@@ -25,7 +25,8 @@ def create_app() -> FastAPI:
     for router in features.routers():
         app.include_router(router)
     app.include_router(pages.router)
-    for folder in ("assets", "brand"):             # built JS/CSS, and the logos
+    # built JS/CSS, the logos, the site's marks, and the self-hosted faces
+    for folder in ("assets", "brand", "logo", "fonts"):
         path = config.DASHBOARD_DIR / "dist" / folder
         path.mkdir(parents=True, exist_ok=True)
         app.mount(f"/{folder}", StaticFiles(directory=path), name=folder)

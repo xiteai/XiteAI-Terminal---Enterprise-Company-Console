@@ -8,7 +8,8 @@ import Button from "../../components/Button.jsx";
 import { ErrorNote } from "../../components/Empty.jsx";
 import Field from "../../components/Field.jsx";
 import Spinner from "../../components/Spinner.jsx";
-import EntryNav from "../shared/EntryNav.jsx";
+import SiteFooter from "../../site/SiteFooter.jsx";
+import SiteNav from "../../site/SiteNav.jsx";
 import "../shared/Entry.css";
 import "./Careers.css";
 
@@ -76,9 +77,11 @@ export default function RoleDetail() {
   const notFound = role.error instanceof ApiError && role.error.status === 404;
 
   return (
-    <div className="entry pub">
-      <EntryNav sub="Careers" links={[{ to: "/careers", label: "All roles" }]} />
+    <div className="site pub">
+      <SiteNav links={[{ to: "/careers", label: "All roles" }]}
+        cta={<Link to="/careers" className="nav-cta">See open roles</Link>} />
 
+      <div className="site-top" />
       {role.loading && <div className="cr-wait"><Spinner delay={300} /></div>}
 
       {notFound && (
@@ -114,6 +117,7 @@ export default function RoleDetail() {
           </div>
         </main>
       )}
+      <SiteFooter />
     </div>
   );
 }

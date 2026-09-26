@@ -1,0 +1,464 @@
+/* ============================================================
+   The public site — nav, footer and the legal surface.
+
+   Carried over from the ELLA OS site (XOS1web/website1). That site is
+   Tailwind; this app is not, so every utility class there is a real rule
+   here. The measurements, colours and behaviour are the originals.
+
+   The palette is scoped to `.site`, not :root. The console stays monochrome;
+   only the pages that carry this nav and this footer switch to the warm paper
+   world, and they do it by re-pointing the Terminal's own tokens — so the
+   components inside them need no changes at all. Deleting that one block puts
+   those pages back to white.
+   ============================================================ */
+
+.site {
+  /* TAKEN VERBATIM FROM THE APP — frontend/style.css :root. The site and the
+     product are one object, so the site does not get its own palette.
+     Deliberately a single light world, no dark variant: the app has none. */
+  --paper: #efeae1;
+  --bloom: #f8f3eb;   /* the lighter centre of its radial gradient */
+  --raise: #f7f2ea;   /* cards sit slightly above the paper */
+  --sunk: #e7e1d6;    /* recessed bands sit slightly below it */
+  --rule: #dcd5c8;
+  --rule-soft: #e6e0d5;
+
+  /* Two embers, same hue as the app's --ember3, different jobs:
+       ember      text and links — 4.62:1 on paper, clears AA for body copy
+       ember-lit  the app's own #c9743f, 2.9:1 — FILLS AND DOTS ONLY.
+     The lit one is the real brand colour and it is genuinely unreadable as
+     text on this background; using it for a link is the mistake to avoid. */
+  --ember: #9b572c;
+  --ember-lit: #c9743f;
+  --ember-soft: #f3e7da;
+  --ember-line: #ddc3a8;
+  --steel: #4a6b80;
+  --steel-soft: #e4e7e7;
+  --steel-line: #bcc7cb;
+  --warn: #8a6520;
+  --warn-soft: #f2e9d5;
+  --warn-line: #ddcda6;
+
+  /* The Terminal's own tokens, re-pointed. Everything already built against
+     --surface / --ink / --muted lands in the warm world unchanged. */
+  --surface: var(--paper);
+  --surface-2: var(--raise);
+  --canvas: var(--sunk);
+  --hover: var(--ember-soft);
+  --press: var(--sunk);
+  --track: var(--sunk);
+  --border: var(--rule);
+  --border-2: var(--rule);
+  --divider: var(--rule-soft);
+  --ink: #1a1714;
+  --text: #3b352e;    /* body text: ink, lifted for long-form reading */
+  --muted: #6c6358;
+  --subtle: #a89e90;
+  --accent: var(--ink);
+  --accent-hover: #3b352e;
+  --accent-soft: var(--ember-soft);
+  --glass: rgba(239, 234, 225, 0.97);
+
+  --serif: "Newsreader", Georgia, "Times New Roman", serif;
+  --site-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --measure-site: 1180px;
+  --gutter-site: 28px;
+
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  color: var(--text);
+  background-color: var(--paper);
+  background-image: radial-gradient(120% 75% at 50% 0%, var(--bloom), var(--paper) 62%);
+  background-repeat: no-repeat;
+}
+.site main { flex: 1; }
+.site h1,
+.site h2 { font-family: var(--serif); font-weight: 400; color: var(--ink); }
+.site-wrap { margin: 0 auto; width: 100%; max-width: var(--measure-site); padding: 0 var(--gutter-site); }
+
+/* ── The nav ──────────────────────────────────────────────────────────────
+   Driven by two custom properties the scroll handler writes and nothing else:
+     --nav-t  0 at the top of the page, 1 once you have scrolled RAMP_PX. The
+              bar condenses out of the hero as this ramps. Never transitioned —
+              it IS the scroll position, so a transition would lag it a frame.
+     --nav-v  0..1, how fast the page is moving under the glass right now. The
+              sheen rides it. Transitioned (registered below), so JS only ever
+              pushes it up and CSS glides it back to rest.
+   React never re-renders to move any of this. */
+@property --nav-v {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+.nav-shell {
+  --nav-t: 0;
+  --nav-v: 0;
+  position: fixed; inset-inline: 0; top: 0; z-index: 50;
+  display: flex; justify-content: center;
+  padding: 1rem var(--gutter-site) 0;
+  pointer-events: none;
+  will-change: transform;   /* promoted once, not re-promoted mid-gesture */
+  transition: transform .5s cubic-bezier(.16, 1, .3, 1);
+}
+/* Retreat: lift it out by its own height plus the gap above it, so nothing
+   peeks. calc() keeps this correct if the bar's padding ever changes. */
+.nav-shell[data-away] { transform: translateY(calc(-100% - .5rem)); }
+
+.nav-bar {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 0.25rem;
+  width: 100%; max-width: 1124px;
+  padding: 0.5rem 0.625rem;
+  border-radius: 1rem;
+  /* Liquid glass. --nav-t owns the build-up — the bar condenses out of the
+     hero, and the CONTENT stays fully opaque the whole time. --nav-v adds the
+     liquid: a light-catch that slides further across and brightens as you
+     scroll faster, then glides back to rest.
+
+     Three background layers, painted front to back:
+       1  the sheen       padding-box  · brightness + reach ride --nav-v
+       2  the paper tint  padding-box  · 56%, so you see THROUGH the glass
+       3  the rim         border-box   · bright at the top-left, shading warm
+                                         toward the lower-right — an edge
+                                         catching the light of a room
+
+     box-shadow carries the inset top specular and a little internal
+     floor-bounce for thickness. -webkit- duplicated because Safari only
+     dropped the prefix at v18 and the older ones are still out there. */
+  border: 1px solid transparent;
+  background:
+    linear-gradient(148deg,
+      rgba(255, 255, 255, calc(var(--nav-t) * (0.10 + var(--nav-v) * 0.13))) 0%,
+      rgba(255, 255, 255, 0) calc(38% + var(--nav-v) * 14%)) padding-box,
+    color-mix(in srgb, var(--paper) calc(var(--nav-t) * 56%), transparent) padding-box,
+    linear-gradient(156deg,
+      rgba(255, 255, 255, calc(var(--nav-t) * 0.48)) 0%,
+      rgba(255, 255, 255, calc(var(--nav-t) * 0.10)) 38%,
+      rgba(150, 118, 90, calc(var(--nav-t) * 0.14)) 100%) border-box;
+  -webkit-backdrop-filter:
+    blur(calc(var(--nav-t) * 15px))
+    saturate(calc(100% + var(--nav-t) * 55%))
+    brightness(calc(100% + var(--nav-t) * 3%));
+  backdrop-filter:
+    blur(calc(var(--nav-t) * 15px))
+    saturate(calc(100% + var(--nav-t) * 55%))
+    brightness(calc(100% + var(--nav-t) * 3%));
+  box-shadow:
+    0 10px 32px -14px rgba(26, 23, 20, calc(var(--nav-t) * 0.26)),
+    inset 0 1px 0 rgba(255, 255, 255, calc(var(--nav-t) * 0.42)),
+    inset 0 -10px 22px -14px rgba(255, 255, 255, calc(var(--nav-t) * 0.18));
+  /* --nav-t is the scroll position and must NOT transition — a transition
+     there lags the ramp a frame behind the page. --nav-v is the one
+     exception: it is a spring back to rest, so it is transitioned, and only
+     it. */
+  transition: --nav-v 460ms cubic-bezier(.16, 1, .3, 1);
+}
+
+/* Reduced transparency: keep the scroll-in and the rim, drop the see-through.
+   Solid paper, no blur, no moving sheen. */
+@media (prefers-reduced-transparency: reduce) {
+  .nav-bar {
+    background:
+      color-mix(in srgb, var(--paper) calc(var(--nav-t) * 100%), transparent) padding-box,
+      linear-gradient(156deg,
+        rgba(255, 255, 255, calc(var(--nav-t) * 0.42)) 0%,
+        rgba(150, 118, 90, calc(var(--nav-t) * 0.14)) 100%) border-box;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow:
+      0 10px 32px -14px rgba(26, 23, 20, calc(var(--nav-t) * 0.26)),
+      inset 0 1px 0 rgba(255, 255, 255, calc(var(--nav-t) * 0.34));
+  }
+}
+
+.nav-brand {
+  display: flex; align-items: center; gap: 0.625rem;
+  padding: 0.375rem 0.75rem 0.375rem 0.375rem;
+  border-radius: 0.75rem;
+  font-family: var(--serif); font-size: 1.02rem; font-weight: 500;
+  letter-spacing: -0.01em; color: var(--ink); text-decoration: none;
+}
+.nav-mark { flex: none; }
+/* The divider is meaningless without a surface behind it. */
+.nav-rule { margin: 0 0.375rem; height: 1.25rem; width: 1px; background: var(--rule); opacity: var(--nav-t); }
+.nav-link {
+  padding: 0.375rem 0.75rem; border-radius: 0.75rem;
+  font-size: 0.875rem; color: var(--muted); text-decoration: none;
+  transition: color .15s, background-color .15s;
+  white-space: nowrap;
+}
+.nav-link:hover { background: var(--ember-soft); color: var(--ink); }
+.nav-spacer { margin-left: auto; }
+.nav-cta {
+  padding: 0.375rem 1rem; border-radius: 0.75rem;
+  background: var(--ink); color: var(--paper);
+  font-size: 0.85rem; font-weight: 500; text-decoration: none; white-space: nowrap;
+  transition: opacity .2s;
+}
+.nav-cta:hover { opacity: 0.85; }
+
+/* Below sm the links and the divider go; the mark and the one button stay. */
+@media (max-width: 639px) {
+  .nav-rule,
+  .nav-link { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-shell { transition: none; }
+}
+
+/* Clears the fixed bar. Pages carrying this nav start their content below it. */
+.site-top { padding-top: 5.5rem; }
+
+/* ── The footer ───────────────────────────────────────────────────────── */
+.ft { margin-top: 6rem; border-top: 1px solid var(--rule); background: var(--sunk); }
+.ft-grid {
+  margin: 0 auto; max-width: var(--measure-site);
+  display: grid; gap: 2.5rem;
+  padding: 3.5rem var(--gutter-site);
+}
+.ft-brand { display: flex; align-items: center; gap: 0.625rem; }
+.ft-mark { flex: none; }
+.ft-company { font-family: var(--serif); font-size: 1.06rem; font-weight: 500; color: var(--ink); }
+.ft-tag { margin-top: 1rem; max-width: 26ch; font-size: 0.9rem; color: var(--muted); }
+.ft-head {
+  margin-bottom: 0.75rem;
+  font-family: var(--site-mono); font-size: 0.68rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink);
+}
+.ft-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.ft-link { font-size: 0.875rem; color: var(--muted); text-decoration: none; transition: color .15s; }
+.ft-link:hover { color: var(--ink); }
+.ft-base { border-top: 1px solid var(--rule); }
+.ft-base-in {
+  margin: 0 auto; max-width: var(--measure-site);
+  padding: 1.5rem var(--gutter-site);
+  display: flex; flex-wrap: wrap; justify-content: space-between;
+  gap: 0.75rem 2rem;
+  font-size: 0.82rem; color: var(--muted);
+}
+.ft-base-links { display: flex; gap: 1.25rem; }
+@media (min-width: 640px) { .ft-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .ft-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* ── The legal hub ────────────────────────────────────────────────────────
+   Reads as a contents page, not a dashboard. Groups are the structural
+   device because they encode something true — the five buckets are genuinely
+   different kinds of promise — and the row is the unit, because a row is what
+   an index is made of. No cards: nineteen cards is a grid to scan, nineteen
+   rows is a document to read.
+
+   Unwritten policies are listed and not linked. Hiding them would be tidier
+   and would also mean the page quietly lies about how much of this is
+   finished. */
+.lh-head { border-bottom: 1px solid var(--rule); padding: 3.5rem 0 2.5rem; }
+.lh-eyebrow {
+  margin-bottom: 1rem;
+  font-family: var(--site-mono); font-size: 0.7rem;
+  text-transform: uppercase; letter-spacing: 0.16em; color: var(--muted);
+}
+.lh-head h1 { max-width: 16ch; font-size: clamp(2.2rem, 5.5vw, 3.5rem); line-height: 1.06; letter-spacing: -0.02em; }
+.lh-lede { margin-top: 1.25rem; max-width: 58ch; font-size: 1.06rem; color: var(--muted); }
+
+/* Start here. Two published documents should not be hunted for in a list of
+   nineteen, and these are the two anyone actually came for. */
+.lh-start {
+  display: grid; gap: 1px; overflow: hidden;
+  border: 1px solid var(--rule); border-radius: 1rem; background: var(--rule);
+}
+@media (min-width: 640px) { .lh-start { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.lh-start a { display: block; padding: 2rem 1.75rem; background: var(--paper); text-decoration: none; transition: background-color .2s; }
+.lh-start a:hover { background: var(--ember-soft); }
+.lh-kicker {
+  font-family: var(--site-mono); font-size: 0.68rem;
+  text-transform: uppercase; letter-spacing: 0.13em; color: var(--ember);
+}
+.lh-start-title { margin-top: 0.75rem; font-family: var(--serif); font-size: 1.45rem; line-height: 1.2; color: var(--ink); }
+.lh-start-sum { margin-top: 0.5rem; max-width: 38ch; font-size: 0.9rem; line-height: 1.4; color: var(--muted); }
+.lh-start-date { margin-top: 1.25rem; font-family: var(--site-mono); font-size: 0.72rem; color: var(--subtle); }
+
+.lh-index { padding: 5rem 0 4rem; }
+.lh-group { display: grid; gap: 0 3.5rem; border-top: 1px solid var(--rule); padding: 2.25rem 0; }
+@media (min-width: 1024px) { .lh-group { grid-template-columns: 15rem minmax(0, 1fr); } }
+.lh-group > h2 {
+  margin-bottom: 1rem;
+  font-family: var(--site-mono); font-size: 0.72rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.14em; color: var(--ember);
+}
+@media (min-width: 1024px) { .lh-group > h2 { margin-bottom: 0; padding-top: 0.25rem; } }
+.lh-rows { list-style: none; margin: 0; padding: 0; }
+.lh-rows > li { border-bottom: 1px solid var(--rule-soft); }
+.lh-rows > li:last-child { border-bottom: none; }
+.lh-row { display: flex; align-items: baseline; justify-content: space-between; gap: 1.5rem; padding: 1rem 0; text-decoration: none; }
+.lh-row-dead { padding: 1rem 0; opacity: 0.55; }
+.lh-row-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.75rem; }
+.lh-row-title { font-family: var(--serif); font-size: 1.12rem; color: var(--ink); }
+.lh-row-state {
+  font-family: var(--site-mono); font-size: 0.66rem;
+  text-transform: uppercase; letter-spacing: 0.12em; color: var(--subtle);
+}
+.lh-row-sum { display: block; margin-top: 0.25rem; max-width: 62ch; font-size: 0.885rem; line-height: 1.4; color: var(--muted); }
+/* The arrow is the only affordance, and it only exists on rows that go
+   somewhere. */
+.lh-arrow {
+  flex: none; font-family: var(--site-mono); font-size: 0.9rem; color: var(--subtle);
+  transition: transform .3s cubic-bezier(.16, 1, .3, 1), color .3s;
+}
+.lh-row:hover .lh-arrow { transform: translateX(4px); color: var(--ember); }
+
+.lh-ask {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: 0.75rem 2rem; border-top: 1px solid var(--rule); padding: 2rem 0;
+  font-size: 0.9rem; color: var(--muted);
+}
+.lh-ask p { margin: 0; max-width: 54ch; }
+.lh-ask a { color: var(--steel); }
+
+/* ── One policy ───────────────────────────────────────────────────────── */
+.ld-crumb { padding-top: 3.5rem; font-family: var(--site-mono); font-size: 0.72rem; color: var(--muted); }
+.ld-crumb a { color: var(--muted); text-decoration: none; }
+.ld-crumb a:hover { color: var(--ink); }
+.ld-crumb span { padding: 0 0.5rem; color: var(--subtle); }
+.ld-crumb b { font-weight: 400; color: var(--ink); }
+
+.ld-head { margin-top: 1.25rem; border-bottom: 1px solid var(--rule); padding-bottom: 2rem; }
+.ld-head h1 { font-size: clamp(2rem, 4.6vw, 3rem); line-height: 1.08; letter-spacing: -0.02em; }
+.ld-sum { margin-top: 1rem; max-width: 58ch; font-size: 1.06rem; color: var(--muted); }
+.ld-meta {
+  margin-top: 1.75rem; display: flex; flex-wrap: wrap; gap: 0.625rem 2rem;
+  font-family: var(--site-mono); font-size: 0.74rem; color: var(--muted);
+}
+.ld-meta b { font-weight: 500; color: var(--ink); }
+
+.ld-body { display: grid; gap: 0 3.5rem; }
+@media (min-width: 1024px) { .ld-body { grid-template-columns: minmax(0, 1fr) 190px; } }
+/* Article first in the DOM: a screen reader and a keyboard should reach the
+   document before its table of contents. The rail is ordered after it and
+   placed back on the right visually. */
+.ld-article { min-width: 0; padding: 2.5rem 0; }
+.ld-rail { display: none; }
+@media (min-width: 1024px) {
+  .ld-rail {
+    display: block; order: 0; position: sticky; top: 6rem; align-self: start;
+    max-height: calc(100vh - 8rem); overflow-y: auto; padding: 2.5rem 0;
+  }
+  .ld-article { order: 1; }
+}
+
+.rail { border-left: 1px solid var(--rule); }
+.rail-title {
+  margin: 1.5rem 0 0.5rem; padding-left: 1rem;
+  font-family: var(--site-mono); font-size: 0.66rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.14em; color: var(--subtle);
+}
+.rail-title:first-child { margin-top: 0; }
+.rail a {
+  display: block; margin-left: -1px; padding: 3px 0 3px 1rem;
+  border-left: 1px solid transparent;
+  font-size: 0.81rem; line-height: 1.4; color: var(--muted); text-decoration: none;
+  transition: color .2s, border-color .2s;
+}
+.rail a:hover { color: var(--ink); }
+.rail a[aria-current] { border-left-color: var(--ember); font-weight: 500; color: var(--ink); }
+
+/* Where to go next. A legal page with no exit but the back button is the
+   clearest sign nobody designed it. */
+.ld-move {
+  display: grid; gap: 1px; overflow: hidden;
+  border: 1px solid var(--rule); border-radius: 1rem; background: var(--rule);
+}
+@media (min-width: 640px) { .ld-move { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ld-move > * { background: var(--paper); padding: 1.25rem 1.5rem; text-decoration: none; transition: background-color .2s; }
+.ld-move a:hover { background: var(--ember-soft); }
+@media (min-width: 640px) { .ld-move > :nth-child(2) { text-align: right; } }
+.ld-move-dir {
+  font-family: var(--site-mono); font-size: 0.68rem;
+  text-transform: uppercase; letter-spacing: 0.13em; color: var(--muted);
+}
+.ld-move-end .ld-move-dir { color: var(--subtle); }
+.ld-move-title { margin-top: 0.25rem; font-family: var(--serif); font-size: 1.06rem; color: var(--ink); }
+.ld-move-none { margin-top: 0.25rem; font-size: 0.95rem; color: var(--subtle); }
+
+.ld-ask {
+  margin-top: 2.5rem; display: flex; flex-wrap: wrap; align-items: baseline;
+  justify-content: space-between; gap: 0.75rem 2rem;
+  border-top: 1px solid var(--rule); padding: 2rem 0 1rem;
+  font-size: 0.9rem; color: var(--muted);
+}
+.ld-ask p { margin: 0; max-width: 52ch; }
+.ld-ask a { color: var(--steel); }
+
+/* ── Prose inside a policy ────────────────────────────────────────────── */
+.prose-legal p { margin: 0 0 1.05em; max-width: 66ch; }
+.prose-legal ul { margin: 0 0 1.05em; padding-left: 1.3em; max-width: 64ch; list-style: disc; }
+.prose-legal li { margin: .34em 0; }
+.prose-legal strong { color: var(--ink); font-weight: 600; }
+.prose-legal em { font-style: italic; }
+.prose-legal h2 { font-size: clamp(1.5rem, 3vw, 2rem); line-height: 1.2; }
+
+.cl { margin-top: 2.25rem; scroll-margin-top: 6rem; }
+.cl > h3 {
+  margin-bottom: 0.5rem; display: flex; align-items: baseline; gap: 0.625rem;
+  font-size: 1.12rem; font-weight: 600; line-height: 1.35; color: var(--ink);
+}
+.cl-n { flex: none; font-family: var(--site-mono); font-size: 0.82em; font-weight: 400; font-variant-numeric: tabular-nums; color: var(--muted); }
+
+/* A blank the company still has to fill in. Visually loud on purpose —
+   publishing with one of these left in is the failure mode. */
+.fill {
+  border-radius: 2px; border: 1px solid var(--ember-line); background: var(--ember-soft);
+  padding: 0.125rem 0.375rem; font-family: var(--site-mono); font-size: 0.87em; color: var(--ember);
+}
+
+.note { border-radius: 3px; padding: 1rem 1.25rem; }
+.note-label {
+  display: block; margin-bottom: 0.5rem;
+  font-family: var(--site-mono); font-size: 0.72rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.13em;
+}
+.note p { margin-bottom: 0.5rem; font-size: 0.925rem; }
+.note p:last-child { margin-bottom: 0; }
+.note-warn {
+  margin-bottom: 2.5rem; border: 1px solid var(--warn-line); border-left: 3px solid var(--warn);
+  background: var(--warn-soft);
+}
+.note-warn .note-label { color: var(--warn); }
+.note-warn p { max-width: 72ch; }
+.note-ember { margin: 1.5rem 0; border: 1px solid var(--ember-line); background: var(--ember-soft); }
+.note-ember .note-label { color: var(--ember); }
+.note-ember p { max-width: 70ch; }
+
+/* Wide content scrolls inside its own container so the page body never does. */
+.doc-table { margin: 1.5rem 0; overflow-x: auto; border: 1px solid var(--rule); border-radius: 4px; background: var(--raise); }
+.doc-table table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 0.885rem; }
+.doc-table th {
+  border-bottom: 1px solid var(--rule); background: var(--rule-soft);
+  padding: 0.625rem 1rem; text-align: left;
+  font-family: var(--site-mono); font-size: 0.7rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted);
+}
+.doc-table td { border-bottom: 1px solid var(--rule-soft); padding: 0.625rem 1rem; vertical-align: top; }
+.doc-table tr:last-child td { border-bottom: none; }
+
+/* The privacy ledger: the one split the whole policy rests on. */
+.ledger { margin: 1.75rem 0; display: grid; gap: 1.25rem; }
+@media (min-width: 768px) { .ledger { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ledger-col { height: 100%; overflow: hidden; border: 1px solid var(--rule); border-radius: 4px; background: var(--raise); }
+.ledger-head { border-bottom: 1px solid; padding: 1rem 1.25rem; }
+.ledger-head span { display: block; }
+.ledger-head b {
+  display: block; margin-bottom: 0.25rem;
+  font-family: var(--site-mono); font-size: 0.7rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.13em;
+}
+.ledger-note { font-size: 0.85rem; line-height: 1.4; color: var(--muted); }
+.ledger-on .ledger-head { border-bottom-color: var(--ember-line); background: var(--ember-soft); }
+.ledger-on .ledger-head b { color: var(--ember); }
+.ledger-off .ledger-head { border-bottom-color: var(--steel-line); background: var(--steel-soft); }
+.ledger-off .ledger-head b { color: var(--steel); }
+.ledger-col ul { list-style: none; margin: 0; padding: 0.5rem 1.25rem 1rem; max-width: none; }
+.ledger-col li { border-bottom: 1px solid var(--rule-soft); padding: 0.625rem 0; margin: 0; }
+.ledger-col li:last-child { border-bottom: none; }
+.ledger-col li b { display: block; margin-bottom: 0.125rem; font-weight: 500; color: var(--ink); }
+.ledger-col li span { font-family: var(--site-mono); font-size: 0.775rem; word-break: break-all; color: var(--muted); }

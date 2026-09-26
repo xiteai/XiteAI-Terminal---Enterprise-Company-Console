@@ -4,7 +4,8 @@ import { motion } from "../../lib/motion.js";
 import { api } from "../../lib/api.js";
 import { useData } from "../../lib/useData.js";
 import Spinner from "../../components/Spinner.jsx";
-import EntryNav from "../shared/EntryNav.jsx";
+import SiteFooter from "../../site/SiteFooter.jsx";
+import SiteNav from "../../site/SiteNav.jsx";
 import "../shared/Entry.css";
 import "./Careers.css";
 
@@ -53,11 +54,10 @@ export default function CareersPage() {
   const openCount = depts.reduce((n, d) => n + d.roles.length, 0);
 
   return (
-    <div className="entry pub">
-      <EntryNav sub="Careers" links={[{ to: "/", label: "Back to XiteAI" }]}
-        cta={<Link to="/join" className="ink">Already have an offer?</Link>} />
+    <div className="site pub">
+      <SiteNav cta={<Link to="/join" className="nav-cta">Already have an offer?</Link>} />
 
-      <section className="cr-hero">
+      <section className="cr-hero site-top">
         <motion.span className="eyebrow" {...rise}>Careers</motion.span>
         <motion.h1 className="t-display" {...rise} transition={{ ...rise.transition, delay: 0.05 }}>
           Build XiteAI with us.
@@ -73,6 +73,7 @@ export default function CareersPage() {
         {board.loading && <div className="cr-wait"><Spinner delay={300} /></div>}
         {depts.map((d) => <Department key={d.department} dept={d} />)}
       </main>
+      <SiteFooter />
     </div>
   );
 }

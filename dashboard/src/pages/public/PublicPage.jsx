@@ -2,11 +2,12 @@ import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "../../lib/motion.js";
 import { api } from "../../lib/api.js";
+import { ago } from "../../lib/format.js";
 import { useData } from "../../lib/useData.js";
 import ProductLogo from "../../components/ProductLogo.jsx";
-import EntryNav from "../shared/EntryNav.jsx";
+import SiteFooter from "../../site/SiteFooter.jsx";
+import SiteNav from "../../site/SiteNav.jsx";
 import HelpForm from "./HelpForm.jsx";
-import PublicFooter from "./PublicFooter.jsx";
 import TrackRequest from "./TrackRequest.jsx";
 import "../shared/Entry.css";
 import "./PublicPage.css";
@@ -23,17 +24,21 @@ export default function PublicPage() {
   const s = status.data;
 
   return (
-    <div className="entry pub">
-      <EntryNav
-        sub=""
-        links={[{ to: "/careers", label: "Careers" }, { href: "#help", label: "Support" }]}
+    <div className="site pub">
+      <SiteNav
+        links={[
+          { href: "#help", label: "Support" },
+          { to: "/careers", label: "Careers" },
+          { to: "/legal/privacy", label: "Your data" },
+          { to: "/legal", label: "Legal" },
+        ]}
         cta={<>
-          <Link to="/login" className="plain">Team sign in</Link>
-          <a className="ink" href="/download">Download</a>
+          <Link to="/login" className="nav-link">Team sign in</Link>
+          <a className="nav-cta" href="/download">Download</a>
         </>}
       />
 
-      <section className="pub-hero">
+      <section className="pub-hero site-top">
         <motion.div {...rise}><ProductLogo product={XOS1} size={56} /></motion.div>
         <motion.h1 className="t-display pub-title" {...rise} transition={{ ...rise.transition, delay: 0.05 }}>
           {s?.company || "XiteAI"}
@@ -74,7 +79,7 @@ export default function PublicPage() {
           <HelpForm />
         </section>
       </main>
-      <PublicFooter company={s?.company} checkedAt={s?.checked_at} version={s?.latest?.version} />
+      <SiteFooter meta={`${s?.latest?.version ? `XOS1 ${s.latest.version}` : "XiteAI OS1"}${s?.checked_at ? ` · checked ${ago(s.checked_at)}` : ""}`} />
     </div>
   );
 }
