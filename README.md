@@ -1,15 +1,19 @@
 # XiteAI Terminal
 
-The XiteAI company console — every product, not just XOS1. One app, three doors:
+**Live at [xtec.xiteai.com](https://xtec.xiteai.com).**
+
+The XiteAI company console — every product, not just XOS1. One app, four doors:
 
 | Door | Who | What |
 |---|---|---|
-| `/` | Customers, no sign-in | XOS1 status, what's new, send a request, check a request, what data we keep |
+| `/` | Anyone, no sign-in | The company page: what XiteAI builds, download XOS1, reach support |
+| `/careers` | Anyone, no sign-in | Open roles, and applying to one |
 | `/join` | New team members | Sign up with a `name@xos1.com` email; the request waits for someone above them |
-| `/console` | The team | Overview, installs, releases, support, people, codebase, AI keys, access, audit, account |
+| `/console` | The team | Home, Quick Links, Divisions, Products, Workplace, People, Careers, Codebase, AI keys, Access, Audit, Account |
 
-It's a website. On your PC it lives at **http://localhost:8710/console**, and that link always
-shows the newest code. To put it online at `xos1dashboard.xiteai.com`, follow [DEPLOY.md](DEPLOY.md).
+It's a website, running at **[xtec.xiteai.com](https://xtec.xiteai.com)**. On your own PC it also
+lives at **http://localhost:8710/console**, and that link always shows the newest code.
+Deploying is in [DEPLOY.md](DEPLOY.md).
 
 ## First run
 
@@ -34,8 +38,8 @@ Its log is `data/logs/dev.log`. `python dev.py --autostart off` stops it and sto
 with Windows. `python run.py` is the plain one-off server, for hosting (DEPLOY.md).
 
 Sign in with `FOUNDER_EMAIL` / `FOUNDER_PASSWORD` from `.env` (you can type just `suraj`).
-Demo data (marked **DEMO** everywhere) fills every panel; remove it from **Account → Demo data**
-before real installs start checking in.
+Demo data (marked **DEMO** everywhere) fills every panel from one button; remove it from
+**Account → Demo data** before real installs start checking in.
 
 ## The hierarchy
 
@@ -59,18 +63,118 @@ Founder › Vice President › Director › HR › Manager › Employee › Inte
 
 ```
 server/
-  core/        config (.env), db, schema, clock, audit trail, notifications
+  core/        config (.env), db, schema, clock, audit trail, notifications, vault, sqlite
   security/    passwords (scrypt), sessions (hashed tokens), authenticator codes, lockout
   access/      levels, permission catalogue + defaults, effective permissions, data shaping
   web/         who's asking (deps), security headers + cross-site guard, page routes
   bootstrap/   start-up (schema, .env accounts, demo data), holding the port, keeping the build fresh
   features/    one folder per feature: routes.py (+ service.py where there's real logic)
-    auth  join  people  requests  access_grid  notifications  overview  installs
-    releases  support  audit_log  account  demo  public  checkin
+    auth  join  people  requests  access_grid  notifications  products  settings  overview
+    installs  releases  support  audit_log  account  demo  public  checkin  ai_keys  code
+    workplace  feed  finance  careers  gateway
 dashboard/     React (Vite): src/lib, src/components, src/charts, src/pages, src/console
-contract/      checkin.schema.json: what an XOS1 install sends
-data/          terminal.db (gitignored: it holds real people's details)
+contract/      checkin.schema.json + sender_reference.py: what an XOS1 install sends, and how
+data/          gitignored: codebase.db, installs.db, workplace.db, code/, backups/, logs/, secret.key
 ```
+
+**Where the data lives.** People, sessions, tickets, notifications, products, announcements,
+finance entries, job roles and the audit trail are in MongoDB Atlas (`MONGO_CLUSTER` in `.env`).
+Three things live in local SQLite files instead, next to the app:
+
+- **`data/codebase.db`** — the Codebase's records (repositories, grants, features, owners, change
+  requests, reviews, comments, checkpoints). A page of the Codebase asks dozens of small
+  questions, and a change request holds whole file texts.
+- **`data/installs.db`** — every install and every one of its check-ins. The busiest data there is:
+  one row per install per check-in, forever.
+- **`data/workplace.db`** — leave, expenses, asset requests, helpdesk tickets, payslips and
+  holidays. Relational and busy, with cascading deletes.
+
+## Home
+
+Where the console opens, and the same for everyone on the team.
+
+- **Birthdays** — a small marquee of who's celebrating in the next two weeks, with their photo
+  and how many days away. Worked out fresh from each person's date of birth, so there's no second
+  copy of it to drift.
+- **Activity Hub** — what's coming up, and how it went once it has. An event can have its result
+  added afterwards.
+- **News** — achievements, funding, announcements. Anyone with `feed.post` (VP, Director, HR,
+  founder) can post; posts can be deleted.
+- A slow marquee across the top carries the headlines of what's coming up.
+
+## Quick Links
+
+The things the team reaches for most, each a drawn scene rather than an icon: Leave, Helpdesk,
+Expenses, Assets, Approvals, Payslips, Team Directory, Handbook. Each tile only appears for
+someone whose level can actually use it — Approvals is nothing but a wall to someone with no
+one reporting to them.
+
+## Divisions
+
+One card per division with its headcount and who's in it. Each opens a room with tabs for Chat,
+Uploads and Checkpoints, and the division's people down the side.
+
+## Workplace
+
+What the team files against the company. Leave, expenses and asset requests are **one object** on
+the server — someone files it, someone senior decides it — so there's one approval path, one
+history, and one place to be sure nothing decides itself twice.
+
+- **Leave** — a real calendar, not two date fields. Click a day to pick it, click again to drop
+  it, so alternate days and split weeks work the way they actually happen. Weekends and holidays
+  can't be picked. Colour carries the state: blue for what you're choosing, green approved, amber
+  pending, purple holiday. Eight kinds: annual (21 days), sick (10), casual (7), maternity (182,
+  per the Maternity Benefit Act), paternity (15), bereavement (5), comp-off and unpaid. Your
+  balance counts pending requests too — you can't spend the same day twice.
+- **Holidays** — an HR-managed list. The fixed national ones are seeded; festival dates move each
+  year, so HR adds the real ones rather than the server guessing.
+- **Expenses** — claim what you spent, by category, up to ₹2,00,000 a claim, within six months.
+- **Assets** — new kit, or a replacement for something lost or damaged. A replacement can carry a
+  fine, set by whoever approves it.
+- **Approvals** — everything waiting on you, across all three kinds. You only see what your level
+  can actually decide: the permission for that kind, *and* a level above whoever filed it.
+- **Helpdesk** — raise a ticket with IT and follow the thread. Whoever works the queue
+  (`helpdesk.work`) sees everyone's and can assign, re-prioritise and close.
+- **Pay** — your payslips, month by month. Seeing anyone else's needs `pay.all` and a level above
+  theirs.
+- **Handbook** — how the company works, in short.
+
+**The founder files nothing.** Nobody outranks them, so there's no one left to ask: their own
+leave, expenses and asset requests are approved the moment they're filed.
+
+## Finance
+
+Per product, under Overview: revenue, cost, and the P&L between them — total, margin, a
+month-by-month trend, and a breakdown by category. Entered by hand, the way a payslip is issued
+by hand; there's no billing system plugged in yet. `finance.view` to see it, `finance.manage` to
+log an entry.
+
+## Careers
+
+- **Public** (`/careers`, no sign-in): open roles grouped by team. A team with nothing open
+  doesn't get a section — it says nothing rather than spending a page on saying so. Each role has
+  its own page and an apply form. The applicant count appears **only once it's past ten**, so a
+  role with three applicants doesn't advertise that.
+- **In the console** (`careers.manage` — VP, Director, HR, founder): post a role and it's live
+  immediately, edit it in place, close or reopen it, and see everyone who applied with their
+  contact details, portfolio and note.
+- Applying is rate-limited per address and has a honeypot field; the same email can't apply to
+  the same role twice.
+
+## People
+
+- **Directory and org chart**, with photos. Everyone's profile holds what they filled in at
+  sign-up.
+- **Employee ID** — `XT-00042`, a formatted reading of the id each person already has, so there's
+  nothing to backfill and no way for it to drift from the record.
+- **Promotion history** — every level or title change, with the date and who made it, and the
+  date of the last one.
+- **Payroll** — PF number and UAN, kept on the record for HR.
+- **Photos** — asked for at sign-up (required), cropped square and compressed in the browser
+  before it's sent. They show everywhere a person appears.
+- **No manager assigned** — when demo data is purged, real people who reported to a demo person
+  lose their manager. Their profile says so and offers an **Assign** button, rather than leaving
+  a silent gap.
 
 ## Codebase
 
@@ -168,66 +272,96 @@ If you've never touched GitHub or its tokens, do this once per codebase you want
    git remote add origin https://github.com/<you>/<repo>.git
    git push -u origin main
    ```
-   (`git remote add` uses the address GitHub shows you on the empty repo's page, under **…or push
-   an existing repository from the command line**.)
 2. **Make a token that can only touch this one repository.**
-   - Go to **GitHub → your profile photo → Settings → Developer settings → Personal access tokens
-     → Fine-grained tokens → Generate new token**.
+   - **GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens →
+     Generate new token**.
    - **Repository access:** *Only select repositories* → pick the one repo. Never *All repositories*.
-   - **Permissions → Repository permissions → Contents:** set to **Read and write**. Leave
-     everything else as *No access*.
-   - **Expiration:** pick a date (GitHub won't let a fine-grained token last forever); put a
-     reminder to make a new one before it expires — the Terminal will simply stop being able to
-     push until you do, nothing breaks or is lost.
-   - Click **Generate token**, and copy it immediately — GitHub shows it exactly once.
-3. **Put the token in the Terminal's `.env`**, not in the Codebase page (the Terminal never asks
-   for it through the browser):
-   ```
-   GITHUB_TOKEN=<the token you just copied>
-   ```
-   Then restart: `python dev.py --autostart on` if you're not already running it, or just save
-   `.env` — the running Terminal restarts itself within a second and picks it up.
-4. **Protect the branch on GitHub itself**, so nobody (not even with the token) can force-history
-   away: **repo → Settings → Branches → Add branch ruleset** (or *classic* Branch protection rules)
-   for `main` → turn on **Block force pushes** and **Restrict deletions**.
-5. **Connect it in the Terminal:** sign in → **Codebase → Repositories → Connect a repository**.
-   Give it a name, the branch (`main`), and the GitHub address
-   (`https://github.com/<you>/<repo>.git`). The Terminal clones it once and then follows GitHub by
-   itself. From here, everything — who sees what, who approves what, what gets pushed back — is
-   set up on the **Codebase** and **Access** pages, not on GitHub.
+   - **Permissions → Repository permissions → Contents:** **Read and write**. Everything else
+     *No access*.
+   - **Expiration:** pick a date and set a reminder — the Terminal simply stops being able to push
+     until you make a new one; nothing breaks or is lost.
+   - **Generate token**, and copy it immediately — GitHub shows it exactly once.
+3. **Put the token in `.env`**, not in the Codebase page (the Terminal never asks for it through
+   the browser): `GITHUB_TOKEN=<the token>`. Saving `.env` restarts the running Terminal within a
+   second.
+4. **Protect the branch on GitHub:** repo → Settings → Branches → Add branch ruleset for `main` →
+   **Block force pushes** and **Restrict deletions**.
+5. **Connect it:** sign in → **Codebase → Repositories → Connect a repository**. Name, branch
+   (`main`), address. The Terminal clones it once and then follows GitHub by itself.
 
-If the repository is already private and already has people pushing to it directly, nothing above
-changes that: the token only lets the Terminal read it and push changes it approved. Nobody has to
-stop using `git push` themselves if they still want to — the Terminal just becomes the other,
-supervised door into the same repository.
+## AI keys and the model gateway
 
-## AI keys
+**No installed copy of XOS1 ever carries an API key.** The app asks the Terminal to make the
+provider call on its behalf; the key is read from the vault, used, and dropped.
 
-The keys every XOS1 install uses live in **Cloudflare Secrets Store**, not in the app. The AI keys
-page can replace a key and never show one: it needs your password again (and your authenticator
-code, if you have one), tests the key with the provider first (a refused key changes nothing), then
-hands it to Cloudflare. The database keeps only who changed which key when, and its last four
-characters. Needs `CF_ACCOUNT_ID`, `CF_API_TOKEN` (permission **Secrets Store Write** only) and
-`CF_SECRETS_STORE_ID` in `.env`. `keys.view` / `keys.replace` in the Access grid decide who.
+- **The vault** — provider keys are encrypted at rest with AES-256-GCM, a fresh nonce each, and
+  authenticated, so a tampered value fails to open rather than decrypting to garbage. The master
+  key is `TC_VAULT_KEY` in `.env` and is never written to the database: whoever holds the database
+  alone holds nothing useful. Generate it with the line in `.env.example`.
+- **The gateway** — `POST /api/v1/ai/{provider}`. XOS1 signs the request with the same Ed25519
+  device key it checks in with. The guards run cheapest first, so a flood costs almost nothing:
+  body size → signature (pure CPU, no database) → replay (a signed request works once) → **is this
+  a machine we know**, matching hardware hash *and* public key → per-device rate limit
+  (`TC_GATEWAY_PER_MIN`, 429 + Retry-After) → only then a provider call. The key is never in the
+  response and never in a log line.
+- **Replacing a key** needs your password again (and your authenticator code, if you have one),
+  tests the key with the provider first (a refused key changes nothing), then stores it in the
+  vault and, if Cloudflare is connected, pushes it there too.
+- **Reading a key in full** (`keys.reveal` — VP, HR, founder by default) needs your password
+  again, is rate-limited like a sign-in, is written to the audit log with your name on it, and
+  tells the founder. The database otherwise keeps only who changed which key when, and its last
+  four characters.
+
+Cloudflare is optional now and kept for the Worker path: `CF_ACCOUNT_ID`, `CF_API_TOKEN`
+(**Secrets Store Write** only) and `CF_SECRETS_STORE_ID`.
+
+## Installs checking in
+
+XOS1 installs `POST /api/v1/checkin`. The body is signed with the install's own Ed25519 key; the
+machine is identified by a **hash** of its hardware id. A copied or edited id fails the signature;
+a reinstall shows up as "re-linked", never as a silent overwrite. Name and age arrive only if the
+user said yes at setup; withdrawing consent clears them on the next check-in.
+
+**The server sets the schedule, not the app.** Every accepted check-in answers with
+`next_after_s`: the base cadence (`TC_CHECKIN_EVERY_S`, 6 h) plus a spread derived from the
+machine's own hash (`TC_CHECKIN_SPREAD_S`, 1 h). Each machine therefore sits in a fixed slot of the
+window and stays there across restarts, instead of every install waking together after an outage.
+Measured over 5,000 machines, the busiest single second holds six of them.
+
+**Under load**, in order: past `TC_CHECKIN_QUEUE_MAX` already waiting, new check-ins are told to
+try again shortly (503 + Retry-After) before anything is parsed; one machine checking in faster
+than `TC_CHECKIN_MIN_INTERVAL_S` is turned away (429). Accepted ones are written by one background
+batcher, not one at a time, so ten thousand PCs checking in together becomes a handful of SQLite
+transactions.
+
+**The app's half of the bargain** is [contract/sender_reference.py](contract/sender_reference.py) —
+drop it in or port it. Three rules: spool every check-in locally and only delete it once the
+server has acknowledged it; never send the whole spool at once (a week offline drains over
+several wakes); and never decide your own schedule — use the server's `next_after_s`. Failures
+back off exponentially **with jitter**, because without jitter every client that failed at the
+same moment retries at the same moment, which is the stampede again with extra steps. Contract:
+[contract/checkin.schema.json](contract/checkin.schema.json). The XOS1 side lives in **XOS1 V17**.
+
+## Demo data
+
+One switch, in **Account → Demo data**, fills every panel: installs and their whole check-in
+history, a second demo product, a team with photos, customer tickets, leave and expenses and
+asset requests and helpdesk tickets, payslips, holidays, the Home feed, finance for both products,
+and open roles with applicants. Purging removes all of it and remembers that you did, so a restart
+doesn't bring it back. Hiding it is a separate switch: with demo hidden, every query adds an
+`is_demo: False` filter, so the rows stay and switching back is instant.
+
+Everything demo-seeded is marked **DEMO** wherever it appears.
 
 ## Tests
 
 ```
 python tests/test_codebase.py     # 35 tests; a local bare repo stands in for GitHub
 python tests/test_ai_keys.py      # 9 tests; provider and Cloudflare calls faked
+python tests/test_checkin.py      # 17 tests; signing, replay, consent, batching
 ```
 
-Both run on a throwaway database with test accounts; neither reads `.env` accounts or touches `data/`.
-
-## Installs checking in
-
-XOS1 installs will `POST /api/v1/checkin` every time the updater checks for a new version
-(every 6 h). The body is signed with the install's own Ed25519 key; the machine is identified by
-a **hash** of its hardware id. A copied or edited id fails the signature; a reinstall shows up as
-"re-linked", never as a silent overwrite. Name and age arrive only if the user said yes at setup;
-withdrawing consent clears them on the next check-in. Contract: [contract/checkin.schema.json](contract/checkin.schema.json).
-The XOS1 side of this (key pair, signed check-in on the update timer, the consent switch) is the
-next thing to build in the app.
+All run on a throwaway database with test accounts; none read `.env` accounts or touch `data/`.
 
 ## Security, in one screen
 
@@ -236,5 +370,28 @@ next thing to build in the app.
 - Every write to the console API must carry the `X-TC: 1` header (a cross-site form can't add it).
 - Lockout after 5 failed sign-ins per account or 20 per address, for 15 minutes.
 - Optional authenticator code for the founder: set `FOUNDER_TOTP_SECRET` before going online.
+- Provider API keys are encrypted at rest; the master key never touches the database.
+- Device-signed endpoints (check-in, gateway) verify Ed25519 signatures before any I/O, refuse
+  replays, and require the machine to already be known.
+- Rate limits on every public door: sign-in, join, email checks, ticket lookups, career
+  applications, check-ins and the model gateway.
 - Strict Content-Security-Policy, no frames, no referrer leaks, `no-store` on every API response.
-- Everything sensitive is in the audit log, including who opened a customer's or employee's profile.
+- Everything sensitive is in the audit log, including who opened a customer's or employee's
+  profile and who read an API key.
+
+**One honest note.** Anything a browser renders — code, styles, images — is in the visitor's
+hands by definition; blocking right-click or devtools is bypassed in seconds and buys nothing.
+Security here is on the server: every endpoint authorises independently, the client is never
+trusted, and no secret is ever shipped to it.
+
+## Coming next
+
+Not built yet — listed so nobody has to guess what's real:
+
+- **Division rooms** — the tabs are there; chat, uploads and checkpoints inside them are not.
+- **Performance reviews** — objectives, a senior's remarks, and a year-by-year record.
+- **The codebase page as a proper editor** — closer to VS Code, with a dark theme.
+- **Account photo editing** — photos are captured at sign-up; changing one later isn't wired yet.
+- **Sitemap, link previews and the rest of the production web surface.**
+- **A retractable sidebar**, custom scrollbars, and a consistent pass of motion across the app.
+- **Legal and documentation pages**, and a shared footer across every public page.

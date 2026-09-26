@@ -1,6 +1,6 @@
 # Putting XiteAI Terminal online
 
-Two jobs: keep the code on GitHub, and make `xos1dashboard.xiteai.com` reach the app.
+Two jobs: keep the code on GitHub, and make `xtec.xiteai.com` reach the app.
 
 ## 1. GitHub: where the repo lives
 
@@ -34,42 +34,46 @@ this PC. Check with `git status` before the first push.
 Don't mirror the same repo in two places: issues, stars and pull requests split, and nobody knows
 where to contribute.
 
-## 2. The address: xos1dashboard.xiteai.com
+## 2. The address: xtec.xiteai.com
 
-### Option A (recommended now, ₹0): the Terminal on your PC + a Cloudflare Tunnel
+### Option A (recommended now, ₹0): the Terminal on a PC you keep on + a Cloudflare Tunnel
 
-The Terminal runs on your PC (`python dev.py --autostart on`: it starts with Windows and always
-serves the newest code); the tunnel gives it the public address with HTTPS. Nothing to buy.
-While your PC is off, the address shows as unreachable; installs keep their check-ins and send
-them when it's back.
+The Terminal runs on a PC that stays on (a spare one is ideal — `python dev.py --autostart on`:
+it starts with Windows and always serves the newest code); the tunnel gives it the public address
+with HTTPS, without opening any port on the router. Nothing to buy. While that PC is off, the
+address shows as unreachable; installs keep their check-ins and send them when it's back.
+
+**Setting up the PC that will run it** (skip if it's already set up, e.g. this one):
+```
+git clone https://github.com/xiteai/xos1-terminal-control.git   # the Terminal's own repo
+cd xos1-terminal-control
+# copy .env from a working install — it's gitignored, it never comes with git clone
+pip install -r requirements.txt
+cd dashboard && npm ci && npm run build && cd ..
+python dev.py --autostart on
+```
+(You never clone your product's own code anywhere by hand — the Codebase feature clones it into
+`data/code` on its own, once `GITHUB_TOKEN` is set in `.env`.)
+
+**Then, all from the Cloudflare dashboard (dash.cloudflare.com):**
 
 1. **Move xiteai.com's DNS to Cloudflare (free).** The website stays on Hostinger; only the
    phone book moves.
-   - Sign up at cloudflare.com → **Add a site** → `xiteai.com` → Free plan.
+   - **Add a site** → `xiteai.com` → Free plan.
    - Cloudflare copies your existing records. **Check the list** before continuing: the `@`
      record (the website), `chat`, `www`, and any `MX`/`TXT` email records must all be there,
      with the same values as in Hostinger's DNS zone.
    - In Hostinger hPanel → **Domains → xiteai.com → DNS / Nameservers → Change nameservers**,
-     enter the two nameservers Cloudflare gave you. Takes minutes to a few hours.
-2. **Create the tunnel** (on this PC):
-   ```
-   winget install --id Cloudflare.cloudflared
-   cloudflared tunnel login
-   cloudflared tunnel create xos1dashboard
-   cloudflared tunnel route dns xos1dashboard xos1dashboard.xiteai.com
-   ```
-   Create `%USERPROFILE%\.cloudflared\config.yml`:
-   ```yaml
-   tunnel: xos1dashboard
-   credentials-file: C:\Users\<you>\.cloudflared\<tunnel-id>.json
-   ingress:
-     - hostname: xos1dashboard.xiteai.com
-       service: http://127.0.0.1:8710
-     - service: http_status:404
-   ```
-   Run it with `cloudflared tunnel run xos1dashboard`, or install it to start with Windows:
-   `cloudflared service install`.
-3. **Before it's reachable, lock it down.** In `.env`:
+     enter the two nameservers Cloudflare gave you. Takes minutes to a few hours; Cloudflare
+     emails you once the domain shows **Active**.
+2. **Create the tunnel.** Left sidebar → **Zero Trust** (first time, it asks for a team name —
+   anything works, free up to 50 users) → **Networks → Tunnels → Create a tunnel → Cloudflared**
+   → name it `xtec` → Save. It shows an install command for Windows: run that in
+   **PowerShell as Administrator** on the PC from the step above. The tunnel shows **Connected**
+   within a few seconds.
+3. **Point it at the app.** Same tunnel → **Public Hostname** tab → **Add a public hostname**:
+   subdomain `xtec`, domain `xiteai.com`, Service Type `HTTP`, URL `localhost:8710` → Save.
+4. **Before it's reachable, lock it down.** In `.env`:
    ```
    TC_COOKIE_SECURE=true
    FOUNDER_TOTP_SECRET=<base32 secret>
@@ -78,7 +82,7 @@ them when it's back.
    `python -c "import base64,secrets;print(base64.b32encode(secrets.token_bytes(20)).decode())"`,
    add it to Google Authenticator (or any authenticator app) as a key. The server picks up the change by itself.
    From then on, signing in as founder also asks for the 6-digit code.
-4. Open `https://xos1dashboard.xiteai.com`. The customer page is `/`, the team signs in at
+5. Open `https://xtec.xiteai.com`. The customer page is `/`, the team signs in at
    `/login`, new members join at `/join`.
 
 ### Option B (always on, ₹0): Oracle Cloud "Always Free" server
@@ -108,18 +112,27 @@ history; the Terminal's history guard is the second lock behind that one.
 Run `python run.py` as a systemd service, and put Caddy in front (automatic HTTPS):
 
 ```
-xos1dashboard.xiteai.com {
+xtec.xiteai.com {
     reverse_proxy 127.0.0.1:8710
 }
 ```
 
-In Hostinger (or Cloudflare) DNS, add an **A record**: name `xos1dashboard`, value = the
-server's IP. Copy `data/terminal.db` across if you're moving from Option A.
+In Hostinger (or Cloudflare) DNS, add an **A record**: name `xtec`, value = the
+server's IP. If you're moving from Option A, copy `data/codebase.db`, `data/installs.db` and
+`data/secret.key` across (or set `TC_SECRET_KEY`); everything else is in MongoDB Atlas already.
 
 ## 3. Backups
 
-Everything that isn't on GitHub lives in one file: `data/terminal.db` (grants, features, change
-requests, the audit trail). Copy it somewhere safe regularly (while the server is stopped, or with
-`sqlite3 data/terminal.db ".backup backup.db"` while it runs). `data/code/` is only a copy of
-GitHub; if it's missing, the server copies it again from GitHub on its own. (A merge that never
-reached GitHub, marked "failed" on its change, would need redoing.)
+- **MongoDB Atlas** holds people, sessions, tickets, notifications and the audit trail. The free
+  tier has no automatic backups: export it now and then (`mongodump` with the connection string,
+  or Atlas → Browse Collections → Export).
+- **`data/codebase.db`** holds the Codebase's records: grants, features, owners, change requests,
+  reviews, comments, checkpoints. Copy it somewhere safe regularly (while the server is stopped,
+  or with `sqlite3 data/codebase.db ".backup codebase-backup.db"` while it runs).
+- **`data/installs.db`** holds every install and every check-in — the biggest file here, and the
+  one that grows fastest. Same backup approach: `sqlite3 data/installs.db ".backup installs-backup.db"`.
+- **`data/secret.key`** (unless `TC_SECRET_KEY` is set) unlocks everyone's authenticator. Without
+  it, everyone sets their authenticator up again.
+- **`data/code/`** is only a copy of GitHub. If it's missing, the server copies it from GitHub
+  again on its own. (A merge that never reached GitHub, marked "failed" on its change, would need
+  redoing.)
