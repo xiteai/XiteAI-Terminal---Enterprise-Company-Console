@@ -166,3 +166,39 @@
   .app-content { padding-top: 28px; }
   .stack { gap: 40px; }
 }
+
+/* ── Collapsing the sidebar ──────────────────────────────────────────────────
+   Width is driven by one variable, so the sidebar and the content beside it
+   move as one thing and can never disagree mid-animation. Collapsed keeps the
+   icons: a rail you can still navigate beats a sidebar that's simply gone. */
+.app { --side-now: var(--side-w); }
+.app-collapsed { --side-now: 68px; }
+.sb { width: var(--side-now); transition: width 0.28s var(--ease); }
+.app-main { margin-left: var(--side-now); transition: margin-left 0.28s var(--ease); }
+
+.app-collapsed .sb-scroll { padding-inline: 10px; }
+.app-collapsed .sb-label,
+.app-collapsed .sb-head,
+.app-collapsed .sb-count,
+.app-collapsed .um-text,
+.app-collapsed .um-caret { opacity: 0; pointer-events: none; }
+.app-collapsed .sb-item { justify-content: center; padding-inline: 0; }
+.app-collapsed .sb-brand { justify-content: center; padding: 0; }
+.app-collapsed .sb-brand .wm-sub { display: none; }
+.sb-label, .sb-head, .sb-count, .um-text, .um-caret { transition: opacity 0.18s var(--ease); }
+
+/* The handle sits on the seam between the two, so it reads as belonging to
+   neither and moving both. */
+.sb-toggle {
+  position: fixed; top: calc(var(--top-h) + 14px); left: calc(var(--side-now) - 13px); z-index: 45;
+  width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%;
+  background: var(--surface); color: var(--muted); box-shadow: 0 0 0 1px var(--border), 0 2px 6px rgba(0,0,0,0.06);
+  transition: left 0.28s var(--ease), color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.sb-toggle:hover { color: var(--ink); box-shadow: 0 0 0 1px var(--border-2), 0 4px 10px rgba(0,0,0,0.1); transform: scale(1.06); }
+.sb-toggle svg { transition: transform 0.28s var(--ease); }
+.app-collapsed .sb-toggle svg { transform: rotate(180deg); }
+
+@media (max-width: 900px) {
+  .sb-toggle { display: none; }           /* the mobile drawer has its own control */
+}
