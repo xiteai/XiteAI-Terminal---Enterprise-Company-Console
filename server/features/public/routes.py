@@ -46,14 +46,10 @@ def _new_ref(conn) -> str:
 
 @router.get("/status")
 def status():
-    try:
-        with db.connect() as conn:
-            conn.command("ping")
-        state = "operational"
-    except Exception:
-        state = "degraded"
+    # No database round-trip here on purpose: the public page's first paint
+    # waits on this, and nothing on that page reads service health anymore.
     return {"product": config.PRODUCT, "product_full": config.PRODUCT_FULL, "company": config.COMPANY,
-            "state": state, "checked_at": db.now_iso(), "latest": loader.latest(),
+            "checked_at": db.now_iso(), "latest": loader.latest(),
             "download_url": config.DOWNLOAD_URL, "support_email": config.SUPPORT_EMAIL,
             "build": freshness.build(),    # launchers compare it, so an old server can't pose as the new one
             "live": freshness.LIVE}        # run by dev.py: it follows the code by itself
