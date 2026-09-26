@@ -34,6 +34,25 @@ CATALOG = [
     ("AI keys", [
         ("keys.view", "See AI key status", "Which provider keys are set, and who last changed each. Never a key."),
         ("keys.replace", "Replace AI keys", "Swap a provider's key. It's tested first, needs their password, and is logged."),
+        ("keys.reveal", "Read an AI key in full", "Show the whole key on screen. Needs their password again, and every read is logged."),
+    ]),
+    ("Home feed", [
+        ("feed.post", "Post to the feed", "Share an announcement, achievement or event with the whole company."),
+    ]),
+    ("Finance", [
+        ("finance.view", "See product finance", "Revenue, costs and the P&L, for the products they're on."),
+        ("finance.manage", "Log finance entries", "Add and remove revenue and cost entries."),
+    ]),
+    ("Careers", [
+        ("careers.manage", "Post and close roles", "Open a role to the public, close it, and see who applied."),
+    ]),
+    ("Workplace", [
+        ("workplace", "The Workplace area", "File leave, expenses, asset requests and helpdesk tickets of their own."),
+        ("leave.approve", "Decide leave", "Approve or decline leave for levels below their own."),
+        ("expenses.approve", "Decide expense claims", "Approve or decline claims for levels below their own."),
+        ("assets.approve", "Decide asset requests", "Approve or decline hardware requests for levels below their own."),
+        ("helpdesk.work", "Work the helpdesk queue", "See every ticket, reply, assign and close."),
+        ("pay.all", "See everyone's payslips", "Payroll for the whole company, not only their own."),
     ]),
     ("Codebase", [
         ("code.map", "See the folder map", "Every folder and file name. Code opens only where they have access."),
@@ -58,20 +77,30 @@ _CONSOLE = {"overview", "overview.demographics", "installs", "releases", "suppor
 _PEOPLE = {"people.directory", "people.profiles", "people.approve", "people.manage", "people.fire", "people.reset"}
 _CODE_ALL = {"code.map", "code.request", "code.read_all", "code.grant", "code.grant_all", "code.owners",
              "code.merge_all", "code.access_view", "code.revoke"}
+# Everyone files their own leave, expenses and tickets; deciding them is a power.
+_DECIDE_ALL = {"leave.approve", "expenses.approve", "assets.approve"}
 
 DEFAULTS: dict[str, set[str]] = {
-    "vp": _CONSOLE | _PEOPLE | _CODE_ALL | {"cust.name", "cust.age", "cust.age_band", "cust.region",
-                                            "installs.erase", "keys.view"},
-    "director": _CONSOLE | {"cust.name_partial", "cust.age_band", "cust.region", "people.directory",
-                            "people.profiles", "people.approve", "people.manage", "people.fire",
-                            "code.map", "code.request", "code.grant", "code.access_view"},
-    "hr": {"overview", "support", "support.reply", "code.access_view", "code.revoke"} | _PEOPLE,
+    "vp": _CONSOLE | _PEOPLE | _CODE_ALL | _DECIDE_ALL | {"cust.name", "cust.age", "cust.age_band", "cust.region",
+                                                          "installs.erase", "keys.view", "workplace",
+                                                          "helpdesk.work", "pay.all", "feed.post",
+                                                          "finance.view", "finance.manage", "careers.manage",
+                                                          "keys.replace", "keys.reveal"},
+    "director": _CONSOLE | _DECIDE_ALL | {"cust.name_partial", "cust.age_band", "cust.region", "people.directory",
+                                          "people.profiles", "people.approve", "people.manage", "people.fire",
+                                          "code.map", "code.request", "code.grant", "code.access_view",
+                                          "workplace", "helpdesk.work", "feed.post", "finance.view",
+                                          "careers.manage"},
+    "hr": {"overview", "support", "support.reply", "code.access_view", "code.revoke",
+           "workplace", "pay.all", "feed.post", "careers.manage",
+           "keys.view", "keys.reveal"} | _PEOPLE | _DECIDE_ALL,
     "manager": {"overview", "overview.demographics", "installs", "releases", "support", "support.reply",
                 "support.assign", "cust.name_partial", "cust.age_band", "people.directory", "people.approve",
-                "code.map", "code.request", "code.grant"},
+                "code.map", "code.request", "code.grant", "workplace", "leave.approve", "expenses.approve",
+                "helpdesk.work"},
     "employee": {"overview", "installs", "releases", "support", "support.reply", "people.directory",
-                 "code.map", "code.request"},
-    "intern": {"overview", "releases", "support", "people.directory", "code.map", "code.request"},
+                 "code.map", "code.request", "workplace"},
+    "intern": {"overview", "releases", "support", "people.directory", "code.map", "code.request", "workplace"},
 }
 
 
