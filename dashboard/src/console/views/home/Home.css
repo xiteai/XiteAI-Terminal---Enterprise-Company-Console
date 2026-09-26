@@ -1,0 +1,63 @@
+/* Marquee: the one thing on Home that moves on its own. Slow, pausable, and
+   masked at both edges so the loop reads as continuous, not clipped. */
+.hm-marquee {
+  overflow: hidden; margin: -4px -14px 4px; padding: 12px 0;
+  border-top: 1px solid var(--divider); border-bottom: 1px solid var(--divider);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+}
+.hm-marquee-track { display: flex; gap: 40px; width: max-content; animation: hm-scroll 38s linear infinite; }
+.hm-marquee:hover .hm-marquee-track { animation-play-state: paused; }
+.hm-marquee-item { display: inline-flex; align-items: center; gap: 8px; font-size: 0.8125rem; color: var(--text); white-space: nowrap; }
+.hm-marquee-item svg { color: var(--muted); flex: none; }
+.hm-marquee-item b { font-weight: 500; color: var(--ink); }
+.hm-marquee-item span { color: var(--subtle); }
+@keyframes hm-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) { .hm-marquee-track { animation: none; } }
+
+/* Birthdays: a small marquee, not a card row — a photo and a name, scrolling
+   past in a strip just tall enough to hold them. */
+.hm-bday-marquee {
+  overflow: hidden; height: 44px; margin-inline: -14px; padding-inline: 14px;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 32px, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 32px, #000 calc(100% - 32px), transparent);
+}
+.hm-bday-track { display: flex; align-items: center; gap: 10px; width: max-content; animation: hm-bday-scroll 26s linear infinite; }
+.hm-bday-track.hm-bday-static { animation: none; }
+.hm-bday-marquee:hover .hm-bday-track { animation-play-state: paused; }
+.hm-bday-chip {
+  display: inline-flex; align-items: center; gap: 8px; flex: none; height: 40px; padding: 0 14px 0 4px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface); white-space: nowrap;
+  transition: border-color 0.15s, transform 0.15s var(--ease);
+}
+.hm-bday-chip:hover { border-color: var(--border-2); transform: translateY(-1px); }
+.hm-bday-chip span { font-size: 0.8125rem; font-weight: 600; color: var(--ink); }
+.hm-bday-chip i { font-style: normal; font-size: 0.75rem; color: var(--muted); }
+.hm-bday-today { border-color: var(--ink); background: var(--ink); }
+.hm-bday-today span, .hm-bday-today i { color: var(--surface); }
+@keyframes hm-bday-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) { .hm-bday-track { animation: none; } }
+
+.hm-quiet { display: flex; align-items: center; gap: 8px; padding: 10px 0; font-size: 0.8125rem; color: var(--subtle); }
+.hm-quiet svg { flex: none; color: var(--border-2); }
+
+.hm-grid { align-items: start; }
+.hm-posts { list-style: none; display: flex; flex-direction: column; }
+.hm-post { position: relative; display: flex; gap: 12px; padding: 14px 0; border-top: 1px solid var(--divider); }
+.hm-post:first-child { border-top: none; padding-top: 0; }
+.hm-post-icon { flex: none; width: 32px; height: 32px; border-radius: 9px; background: var(--accent-soft);
+  color: var(--ink); display: grid; place-items: center; }
+.hm-post-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.hm-post-body b { font-size: 0.875rem; font-weight: 600; color: var(--ink); letter-spacing: -0.012em; }
+.hm-post-body p { font-size: 0.8125rem; color: var(--text); line-height: 1.5; }
+.hm-post-result { padding-left: 10px; border-left: 2px solid var(--border-2); color: var(--muted) !important; }
+.hm-post-meta { font-size: 0.75rem; color: var(--subtle); margin-top: 2px; }
+.hm-post-del { flex: none; align-self: flex-start; color: var(--subtle); padding: 5px; border-radius: 7px;
+  opacity: 0; transition: opacity 0.12s, color 0.12s, background-color 0.12s; }
+.hm-post:hover .hm-post-del { opacity: 1; }
+.hm-post-del:hover { color: var(--bad); background: var(--bad-soft); }
+
+.hm-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 12px; }
+.hm-wide { grid-column: 1 / -1; }
+
+@media (max-width: 900px) { .hm-grid { grid-template-columns: 1fr; } }
