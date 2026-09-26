@@ -1,17 +1,38 @@
-.select { display: inline-flex; flex-direction: column; gap: 6px; min-width: 0; }
-.select-box { position: relative; display: flex; align-items: center; }
-.select select {
-  appearance: none; width: 100%; height: 36px; padding: 0 30px 0 11px;
+.select { position: relative; display: inline-flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+.select-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; height: 36px; padding: 0 11px;
   background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--r);
-  color: var(--ink); font-size: 0.8125rem; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
+  color: var(--ink); font-size: 0.8125rem; text-align: left; cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
 }
-.select-sm select { height: 30px; font-size: 0.75rem; padding-left: 10px; border-radius: 7px; }
-.select select:hover { border-color: #c2c2c7; }
-.select select:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
-.select select:disabled { color: var(--muted); background: var(--surface-2); cursor: default; }
-.select-caret { position: absolute; right: 10px; color: var(--muted); pointer-events: none; }
-.select option { background: var(--surface); color: var(--ink); }
+.select-sm .select-trigger { height: 30px; font-size: 0.75rem; padding: 0 9px; border-radius: 7px; }
+.select-trigger:hover { border-color: #c2c2c7; }
+.select-trigger:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.select-open .select-trigger { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.select-disabled .select-trigger { color: var(--muted); background: var(--surface-2); cursor: default; }
+
+.select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-placeholder { color: var(--subtle); }
+.select-caret { flex: none; color: var(--muted); transition: transform 0.2s var(--ease); }
+.select-open .select-caret { transform: rotate(180deg); color: var(--ink); }
+
+.select-list {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 60;
+  max-height: 264px; overflow-y: auto; list-style: none; padding: 6px;
+  background: var(--glass); border-radius: 12px; box-shadow: var(--shadow-pop);
+  -webkit-backdrop-filter: saturate(180%) blur(24px); backdrop-filter: saturate(180%) blur(24px);
+}
+.select-opt {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 10px; border-radius: 8px; font-size: 0.8125rem; color: var(--text); cursor: pointer;
+}
+.select-opt svg { color: var(--ink); flex: none; }
+.select-opt.on-active { background: var(--hover); }
+.select-opt.on-selected { color: var(--ink); font-weight: 500; }
+.select-opt.opt-disabled { color: var(--subtle); cursor: not-allowed; }
 
 /* Inside a table row, a select reads as text until you reach for it. */
-.select-bare select { border-color: transparent; background: transparent; padding-left: 8px; margin-left: -8px; }
-.select-bare select:hover { border-color: var(--border-2); background: var(--surface); }
+.select-bare .select-trigger { border-color: transparent; background: transparent; padding-left: 8px; margin-left: -8px; }
+.select-bare .select-trigger:hover, .select-bare.select-open .select-trigger { border-color: var(--border-2); background: var(--surface); }
