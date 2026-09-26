@@ -25,6 +25,7 @@ os.environ.update({
     # only the DATABASE NAME is swapped, to a throwaway one dropped when this run ends.
     "TC_MONGO_DB_NAME": MONGO_DB_NAME, "TC_DEMO_DATA": "false", "TC_CODE_DIR": str(TMP / "code"),
     "TC_CODE_BACKUP_DIR": str(TMP / "backups"),         # never the real data/backups
+    "TC_CODE_DB_PATH": str(TMP / "codebase.db"),        # never the real data/codebase.db
     "TC_CODE_ALLOW_LOCAL": "true", "TC_CODE_SYNC_MIN": "0", "GITHUB_TOKEN": "",
     "TC_CODE_ALERT_FILES_HOUR": "6", "TC_CODE_PAUSE_FILES_HOUR": "9",
     "FOUNDER_EMAIL": "boss", "FOUNDER_PASSWORD": PW["boss"], "FOUNDER_TOTP_SECRET": "",
@@ -351,15 +352,12 @@ class Codebase(unittest.TestCase):
     def test_14_expired_grants_stop(self):
         self.ok(self.api("vee", "post", "/grants", {"staff_id": self.ids["emma"], "expires_on": "2020-01-01",
                                                     "items": [{"kind": "file", "path": "README.md"}]}), 400)
-        with db.connect() as conn:
-            gid = db.next_id(conn, "code_grants")
-            conn["code_grants"].insert_one({"_id": gid, "id": gid, "repo_id": self.rid, "staff_id": self.ids["emma"],
-                                            "feature_id": None, "can_edit": False, "note": "", "granted_by": self.ids["vee"],
-                                            "granted_at": db.now_iso(), "expires_at": "2020-01-01T00:00:00+00:00"})
-            iid = db.next_id(conn, "code_items")
-            conn["code_items"].insert_one({"_id": iid, "id": iid, "repo_id": self.rid, "feature_id": None,
-                                           "grant_id": gid, "kind": "file", "path": "README.md", "line_start": None,
-                                           "line_end": None, "symbol": "", "missing": False})
+        from server.features.code import store
+        with store.tx() as t:
+            gid = t.run("INSERT INTO code_grants (repo_id, staff_id, granted_by, granted_at, expires_at) VALUES (?,?,?,?,?)",
+                        (self.rid, self.ids["emma"], self.ids["vee"], db.now_iso(), "2020-01-01T00:00:00+00:00")).lastrowid
+            t.run("INSERT INTO code_items (repo_id, grant_id, kind, path) VALUES (?,?,?,?)",
+                  (self.rid, gid, "file", "README.md"))
         self.ok(self.api("emma", "get", "/file?path=README.md"), 403)
 
     def test_16_lost_copy_comes_back_from_github(self):
@@ -645,6 +643,25 @@ class Codebase(unittest.TestCase):
         self.ok(self.api("boss", "post", f"/changes/{cid}/withdraw"))
         self.assertTrue(f["head"])
 
+    def test_38_deleting_a_feature_ends_its_access(self):
+        """Deleting a feature takes its items, and every grant of it, in the same
+        step: nobody keeps access to code through a feature that's gone."""
+        from server.features.code import store
+
+        def level(path):          # the map, not opening the file: opening would count towards the reading alarm
+            return {f["p"]: f["a"] for f in self.ok(self.api("emma", "get", "/tree"))["files"]}[path]
+
+        self.assertEqual(level("docs/page8.md"), "none")
+        o = self.ok(self.api("vee", "post", "/features", {"name": "Page eight", "items": [
+            {"kind": "file", "path": "docs/page8.md"}]}))
+        fid = next(f["id"] for f in o["features"] if f["name"] == "Page eight")
+        self.ok(self.api("vee", "post", "/grants", {"staff_id": self.ids["emma"], "feature_id": fid}))
+        self.assertEqual(level("docs/page8.md"), "full")
+        self.ok(self.api("vee", "delete", f"/features/{fid}"))
+        self.assertEqual(level("docs/page8.md"), "none")
+        self.assertEqual(store.scalar("SELECT COUNT(*) FROM code_grants WHERE feature_id = ?", (fid,)), 0)
+        self.assertEqual(store.scalar("SELECT COUNT(*) FROM code_items WHERE feature_id = ?", (fid,)), 0)
+
     def test_39_history_guard_catches_a_force_push(self):
         before = self.ok(self.u["boss"].get("/api/code/repos"))["items"][0]["head_sha"]
         git("fetch", "-q", "origin")
@@ -686,7 +703,7 @@ class Codebase(unittest.TestCase):
 
 if __name__ == "__main__":
     assert config.MONGO_DB_NAME == MONGO_DB_NAME and MONGO_DB_NAME != "xiteai_terminal" and \
-        all(p.is_relative_to(TMP) for p in (config.CODE_DIR, config.CODE_BACKUP_DIR)), \
+        all(p.is_relative_to(TMP) for p in (config.CODE_DIR, config.CODE_BACKUP_DIR, config.CODE_DB_PATH)), \
         "refusing to run outside the sandbox"
     try:
         result = unittest.main(verbosity=2, exit=False).result

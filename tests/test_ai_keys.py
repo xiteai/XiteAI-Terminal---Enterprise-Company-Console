@@ -22,6 +22,7 @@ os.environ.update({
     # only the DATABASE NAME is swapped, to a throwaway one dropped when this run ends.
     "TC_MONGO_DB_NAME": MONGO_DB_NAME, "TC_DEMO_DATA": "false",
     "TC_CODE_DIR": str(Path(TMP) / "code"), "TC_CODE_BACKUP_DIR": str(Path(TMP) / "backups"), "TC_CODE_SYNC_MIN": "0",
+    "TC_CODE_DB_PATH": str(Path(TMP) / "codebase.db"),
     "FOUNDER_EMAIL": "boss", "FOUNDER_PASSWORD": PW, "FOUNDER_TOTP_SECRET": "",
     "SEED_STAFF": "vp:vee:Test-Vp-Pw-2026A:Vee Pee;employee:emma:Test-Emp-Pw-2026A:Em Ploy",
     "CF_ACCOUNT_ID": "", "CF_API_TOKEN": "", "CF_SECRETS_STORE_ID": "",
