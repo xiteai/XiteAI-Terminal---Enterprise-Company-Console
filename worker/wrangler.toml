@@ -1,0 +1,47 @@
+name = "xiteai-gateway"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# Ed25519 in WebCrypto needs this flag on older compatibility dates. Harmless
+# to leave on; remove only if a future date makes it the default.
+compatibility_flags = ["nodejs_compat"]
+
+# ── Provider keys, from the Secrets Store you already created ────────────────
+# store_id is the one on your Secrets Store page. secret_name must match the
+# name shown there exactly (they are case sensitive).
+[[secrets_store_secrets]]
+binding = "DEEPINFRA_API_KEY"
+store_id = "5f2e7db1d90a409daeb3bfbbcb4d707f"
+secret_name = "DEEPINFRA_API_KEY"
+
+[[secrets_store_secrets]]
+binding = "CEREBRAS_API_KEY"
+store_id = "5f2e7db1d90a409daeb3bfbbcb4d707f"
+secret_name = "CEREBRAS_API_KEY"
+
+[[secrets_store_secrets]]
+binding = "OPENAI_API_KEY"
+store_id = "5f2e7db1d90a409daeb3bfbbcb4d707f"
+secret_name = "OPENAI_API_KEY"
+
+[[secrets_store_secrets]]
+binding = "BASETEN_API_KEY"
+store_id = "5f2e7db1d90a409daeb3bfbbcb4d707f"
+secret_name = "BASETEN_API_KEY"
+
+# ── Revoked machines ─────────────────────────────────────────────────────────
+# Key = hardware hash, value = anything. Present means refused. Empty namespace
+# means nothing is revoked, which is the normal state.
+#   npx wrangler kv namespace create REVOKED
+# then paste the id it prints here and uncomment.
+# [[kv_namespaces]]
+# binding = "REVOKED"
+# id = "PASTE_THE_ID_WRANGLER_PRINTS"
+
+# ── Per-device rate limit ────────────────────────────────────────────────────
+# Optional. Without it the provider's own limits are the backstop.
+[[unsafe.bindings]]
+name = "RATE"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 60, period = 60 }
