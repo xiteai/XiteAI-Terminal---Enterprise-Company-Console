@@ -1,5 +1,6 @@
 .avatar {
-  display: inline-grid; place-items: center; flex: none; border-radius: 50%;
+  display: inline-grid; place-items: center; flex: none; border-radius: 50%; overflow: hidden;
   font-weight: 600; letter-spacing: 0.01em; color: #48484a; background: #e8e8ed;
 }
 .avatar-founder { color: #fff; background: var(--ink); }
+.avatar-img { width: 100%; height: 100%; object-fit: cover; }
