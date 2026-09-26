@@ -1,0 +1,9 @@
+.fin-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 12px; }
+.fin-wide { grid-column: 1 / -1; }
+
+.fin-kind { font-size: 0.75rem; font-weight: 500; padding: 3px 8px; border-radius: 999px; }
+.fin-revenue { color: #15803d; background: #f0fdf4; }
+.fin-cost { color: #b91c1c; background: #fef2f2; }
+
+.fin-del { color: var(--subtle); padding: 5px; border-radius: 6px; }
+.fin-del:hover { color: var(--bad); background: var(--bad-soft); }
