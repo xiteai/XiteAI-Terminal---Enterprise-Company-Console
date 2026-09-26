@@ -24,3 +24,12 @@ Thumbs.db
 
 # Screens being built (dev.py builds beside dist/, then swaps them in)
 dashboard/.dist-next-*/
+
+# The databases travel with the repo so work can move between machines.
+# Their neighbours in data/ deliberately do not:
+#   code/     git clones — a repo inside a repo, and re-cloned on demand
+#   backups/  git bundles of that same history, regenerated daily
+#   logs/     noise
+#   secret.key  a key. Copy it by hand, like .env; never into git history.
+!data/*.db
+!data/*.json
