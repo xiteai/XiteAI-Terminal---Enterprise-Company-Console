@@ -21,7 +21,7 @@ export default function QuickLinkCard({ link }) {
 
   return (
     <motion.div variants={rise}>
-      <Link ref={ref} to={link.to} className="qlcard" onMouseMove={track}>
+      <Link ref={ref} to={link.to} className="qlcard artcard" onMouseMove={track}>
         <span className="qlcard-scene">
           <QuickLinkArt name={link.art} />
         </span>
@@ -35,7 +35,7 @@ export default function QuickLinkCard({ link }) {
             <path d="M5 12h14M13 6l6 6-6 6" />
           </svg>
         </span>
-        <span className="qlcard-glow" aria-hidden="true" />
+        <span className="artcard-glow" aria-hidden="true" />
       </Link>
     </motion.div>
   );

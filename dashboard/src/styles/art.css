@@ -1,0 +1,53 @@
+/* The drawn-scene vocabulary, shared by every card that carries one.
+
+   It started inside Quick Links and now Divisions uses it too, so it lives
+   here rather than in one page's stylesheet. Two things to know: a scene is
+   built from these classes (`paper`, `hair`, `ink` and friends), and a card
+   that wants the scene to move on hover adds `artcard` next to its own class. */
+
+.qlart { display: block; width: 100%; height: auto; transition: transform 0.6s var(--ease); }
+
+/* Paper on grey, hairlines, one ink detail. Never a colour. */
+.qlart .paper { fill: var(--surface); stroke: var(--ink); stroke-width: 1.15; }
+.qlart .hair { fill: none; stroke: var(--ink); stroke-width: 1.15; }
+.qlart .hair-2 { fill: none; stroke: var(--border-2); stroke-width: 1.15; }
+.qlart .dash { fill: none; stroke: var(--border-2); stroke-width: 1.15; stroke-dasharray: 3 5; }
+.qlart .mid { fill: var(--track); }
+.qlart .mid-s { fill: var(--track); stroke: var(--ink); stroke-width: 1.15; }
+.qlart .dot { fill: var(--border-2); }
+.qlart .ink { fill: var(--ink); }
+.qlart .ink-l { fill: none; stroke: var(--ink); stroke-width: 1.6; }
+
+/* Each scene has one part that moves, and it moves quietly. */
+.qlart .float, .qlart .pop, .qlart .slide, .qlart .ink-l {
+  transform-box: fill-box; transform-origin: center;
+  transition: transform 0.6s var(--ease), opacity 0.5s var(--ease);
+}
+.artcard:hover .qlart { transform: scale(1.02); }
+.artcard:hover .qlart .float { transform: translateY(-5px); }
+.artcard:hover .qlart .pop { transform: scale(1.05); }
+.artcard:hover .qlart .slide { transform: translateY(7px); }
+.qlart .draw { stroke-dasharray: 190; stroke-dashoffset: 0; }
+.artcard:hover .qlart .draw { animation: ql-draw 0.9s var(--ease); }
+
+@keyframes ql-draw {
+  from { stroke-dashoffset: 190; }
+  to { stroke-dashoffset: 0; }
+}
+
+/* Light under the cursor. Grey, never a colour, and only while hovered. */
+.artcard-glow {
+  position: absolute; inset: 0; z-index: -1; opacity: 0; pointer-events: none;
+  background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 50%), rgba(17, 17, 19, 0.04), transparent 72%);
+  transition: opacity 0.45s var(--ease);
+}
+.artcard:hover .artcard-glow { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .qlart, .qlart .float, .qlart .pop, .qlart .slide, .artcard-glow { transition-duration: 0.01ms; }
+  .artcard:hover .qlart,
+  .artcard:hover .qlart .float,
+  .artcard:hover .qlart .pop,
+  .artcard:hover .qlart .slide { transform: none; }
+  .artcard:hover .qlart .draw { animation: none; }
+}

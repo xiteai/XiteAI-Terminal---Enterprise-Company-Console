@@ -1,20 +1,54 @@
-.dv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+/* Divisions: the same card as Quick Links — a drawn scene above, the team
+   below. The scene vocabulary itself lives in styles/art.css. */
+
+.dv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(288px, 1fr)); gap: 16px; }
+
 .dv-card {
-  display: flex; flex-direction: column; gap: 14px; padding: 18px;
+  position: relative; isolation: isolate; overflow: hidden;
+  display: flex; flex-direction: column;
   border: 1px solid var(--border); border-radius: var(--r-card); background: var(--surface);
-  transition: border-color 0.2s var(--ease), transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
+  transition: border-color 0.4s var(--ease), box-shadow 0.4s var(--ease), transform 0.4s var(--ease);
 }
-.dv-card:hover { border-color: var(--border-2); transform: translateY(-3px); box-shadow: var(--shadow-pop); }
-.dv-top { display: flex; align-items: center; justify-content: space-between; }
-.dv-icon { flex: none; width: 40px; height: 40px; border-radius: 11px; background: var(--accent-soft); color: var(--ink); display: grid; place-items: center; }
-.dv-go { color: var(--subtle); flex: none; transition: color 0.15s, transform 0.2s var(--ease); }
-.dv-card:hover .dv-go { color: var(--ink); transform: translateX(2px); }
-.dv-name { font-size: 0.9375rem; font-weight: 600; color: var(--ink); letter-spacing: -0.014em; }
-.dv-foot { display: flex; align-items: center; gap: 10px; }
-.dv-stack { display: flex; }
-.dv-stack > * { margin-left: -7px; box-shadow: 0 0 0 2px var(--surface); border-radius: 50%; }
+.dv-card:hover {
+  border-color: transparent; transform: translateY(-3px);
+  box-shadow: 0 0 0 1px rgba(17, 17, 19, 0.09), 0 2px 8px rgba(17, 17, 19, 0.04), 0 18px 40px -16px rgba(17, 17, 19, 0.2);
+}
+.dv-card:active { transform: translateY(-1px); transition-duration: 0.12s; }
+
+.dv-scene { display: block; background: var(--surface-2); border-bottom: 1px solid var(--border); overflow: hidden; }
+
+.dv-foot { display: flex; align-items: center; gap: 10px; padding: 15px 18px; }
+.dv-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; line-height: 1.35; }
+.dv-body b {
+  font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.016em; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dv-count { font-size: 0.78125rem; color: var(--muted); transition: color 0.35s var(--ease); }
+.dv-card:hover .dv-count { color: var(--text); }
+
+/* The faces overlap, then open up a little when the card is hovered. */
+.dv-stack { display: flex; flex: none; }
+.dv-stack > * { margin-left: -8px; box-shadow: 0 0 0 2px var(--surface); border-radius: 50%; transition: margin-left 0.4s var(--ease); }
 .dv-stack > *:first-child { margin-left: 0; }
-.dv-count { font-size: 0.75rem; color: var(--muted); }
+.dv-card:hover .dv-stack > * { margin-left: -4px; }
+.dv-card:hover .dv-stack > *:first-child { margin-left: 0; }
+
+.dv-go {
+  flex: none; color: var(--subtle);
+  opacity: 0; transform: translateX(-7px);
+  transition: opacity 0.4s var(--ease), transform 0.5s var(--ease), color 0.35s var(--ease);
+}
+.dv-card:hover .dv-go { opacity: 1; transform: translateX(0); color: var(--ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  .dv-card, .dv-go, .dv-stack > * { transition-duration: 0.01ms; }
+  .dv-card:hover { transform: none; }
+}
+
+@media (max-width: 640px) {
+  .dv-grid { grid-template-columns: 1fr; }
+  .dv-go { opacity: 1; transform: none; }
+}
 
 /* One division's room. */
 .dr-layout { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 16px; align-items: start; }
