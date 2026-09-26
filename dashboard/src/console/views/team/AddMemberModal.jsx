@@ -60,7 +60,7 @@ export default function AddMemberModal({ open, onClose, current, roles, onDone }
           const on = picked.includes(p.id);
           return (
             <button key={p.id} type="button" className={cx("tm-opt", on && "on")} onClick={() => toggle(p.id)} aria-pressed={on}>
-              <Avatar initials={p.initials} level={p.level} size={32} />
+              <Avatar src={p.avatar_url} initials={p.initials} level={p.level} size={32} />
               <span className="tm-opt-text">
                 <b>{p.display_name}{p.is_demo && <span className="demo-tag">Demo</span>}</b>
                 <small>{p.title} · {p.department} · {p.level_label}</small>

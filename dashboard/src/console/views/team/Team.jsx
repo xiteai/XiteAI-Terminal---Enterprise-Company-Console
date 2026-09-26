@@ -67,7 +67,7 @@ export default function Team() {
                     <tr key={p.id}>
                       <td>
                         <Link to={`/console/people/${p.id}`} className="tm-person">
-                          <Avatar initials={p.initials} level={p.level} size={32} />
+                          <Avatar src={p.avatar_url} initials={p.initials} level={p.level} size={32} />
                           <span className="tm-person-text">
                             <b>{p.display_name}{p.is_demo && <span className="demo-tag">Demo</span>}</b>
                             <small>{p.email}</small>
