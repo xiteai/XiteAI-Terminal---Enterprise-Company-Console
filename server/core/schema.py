@@ -45,15 +45,8 @@ def init() -> None:
         # ── Products ────────────────────────────────────────────────────────
         _ensure(conn["products"], [("slug", ASCENDING)], unique=True, name="uq_slug")
 
-        # ── Installs ────────────────────────────────────────────────────────
-        _ensure(conn["installs"], [("code", ASCENDING)], unique=True, name="uq_code")
-        _ensure(conn["installs"], [("product_id", ASCENDING), ("hardware_hash", ASCENDING)], unique=True,
-               name="uq_product_hw")
-        _ensure(conn["installs"], [("last_seen", ASCENDING)], name="ix_last_seen")
-        _ensure(conn["installs"], [("product_id", ASCENDING), ("last_seen", ASCENDING)], name="ix_product_last_seen")
-
-        _ensure(conn["checkins"], [("at", ASCENDING)], name="ix_at")
-        _ensure(conn["checkins"], [("install_id", ASCENDING), ("at", ASCENDING)], name="ix_install_at")
+        # Installs and their check-ins are in their own SQLite file, not here:
+        # see server/features/installs/store.py.
 
         # ── Customer requests ───────────────────────────────────────────────
         _ensure(conn["tickets"], [("ref", ASCENDING)], unique=True, name="uq_ref")
@@ -62,17 +55,18 @@ def init() -> None:
         # ── AI keys ─────────────────────────────────────────────────────────
         _ensure(conn["ai_key_changes"], [("provider", ASCENDING), ("id", ASCENDING)], name="ix_provider_id")
 
-        # ── Codebase ────────────────────────────────────────────────────────
-        _ensure(conn["code_features"], [("repo_id", ASCENDING), ("name", ASCENDING)], unique=True, name="uq_repo_name")
-        _ensure(conn["code_grants"], [("repo_id", ASCENDING), ("staff_id", ASCENDING)], name="ix_repo_staff")
-        _ensure(conn["code_items"], [("repo_id", ASCENDING), ("path", ASCENDING)], name="ix_repo_path")
-        _ensure(conn["code_changes"], [("repo_id", ASCENDING), ("status", ASCENDING), ("updated_at", ASCENDING)],
-               name="ix_repo_status_updated")
-        _ensure(conn["code_protected"], [("repo_id", ASCENDING), ("path", ASCENDING)], unique=True, name="uq_repo_path")
-        _ensure(conn["code_checkpoints"], [("repo_id", ASCENDING), ("name", ASCENDING)], unique=True,
-               name="uq_repo_name")
-        _ensure(conn["code_comments"], [("change_id", ASCENDING)], name="ix_change")
-        _ensure(conn["code_reads"], [("staff_id", ASCENDING), ("at", ASCENDING)], name="ix_staff_at")
+        # The Codebase keeps its records in its own SQLite file, not here:
+        # see server/features/code/store.py.
+
+        # ── Home feed ───────────────────────────────────────────────────────
+        _ensure(conn["announcements"], [("posted_at", ASCENDING)], name="ix_posted_at")
+
+        # ── Finance ─────────────────────────────────────────────────────────
+        _ensure(conn["finance_entries"], [("product_id", ASCENDING), ("occurred_on", ASCENDING)], name="ix_product_occurred")
+
+        # ── Careers ─────────────────────────────────────────────────────────
+        _ensure(conn["job_roles"], [("status", ASCENDING), ("department", ASCENDING)], name="ix_status_department")
+        _ensure(conn["job_applications"], [("role_id", ASCENDING), ("applied_at", ASCENDING)], name="ix_role_applied")
 
         # ── The record ──────────────────────────────────────────────────────
         _ensure(conn["audit"], [("at", ASCENDING)], name="ix_at")
