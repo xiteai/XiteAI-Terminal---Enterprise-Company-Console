@@ -13,6 +13,28 @@
 .pub-meta-bad { color: var(--bad); }
 
 .pub-main { width: 100%; max-width: 1128px; margin: 0 auto; padding: 0 24px 112px; display: flex; flex-direction: column; gap: 96px; }
+
+/* The one loud thing on this page: careers gets a full-bleed ink band, not
+   another quiet ruled section, because that's the whole point of it. */
+.pub-careers-cta {
+  display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap;
+  padding: 44px 48px; border-radius: 24px; background: var(--ink); color: var(--surface);
+}
+.pub-careers-cta .eyebrow { color: rgba(255, 255, 255, 0.55); }
+.pub-careers-cta h2 { color: #fff; margin-top: 4px; }
+.pub-careers-cta .t-lede { color: rgba(255, 255, 255, 0.72); margin-top: 6px; }
+.pub-careers-go {
+  display: inline-flex; align-items: center; gap: 10px; flex: none; height: 48px; padding: 0 26px;
+  border-radius: 24px; background: #fff; color: var(--ink); font-size: 0.9375rem; font-weight: 600;
+  transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+.pub-careers-go:hover { transform: translateY(-2px); box-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.4); }
+.pub-careers-go svg { transition: transform 0.2s var(--ease); }
+.pub-careers-go:hover svg { transform: translateX(3px); }
+
+@media (max-width: 640px) {
+  .pub-careers-cta { padding: 32px 24px; flex-direction: column; align-items: flex-start; }
+}
 .pub-sec { display: flex; flex-direction: column; gap: 32px; padding-top: 28px; border-top: 1px solid var(--border); scroll-margin-top: 76px; }
 .pub-sec-head { display: flex; flex-direction: column; gap: 10px; max-width: 720px; }
 

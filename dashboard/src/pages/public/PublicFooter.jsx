@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
+import { ago } from "../../lib/format.js";
 import Wordmark from "../../components/Wordmark.jsx";
 
-export default function PublicFooter({ company = "XiteAI Technologies" }) {
+export default function PublicFooter({ company = "XiteAI Technologies", version, checkedAt }) {
   return (
     <footer className="entry-foot">
       <div className="pub-foot">
@@ -10,10 +11,9 @@ export default function PublicFooter({ company = "XiteAI Technologies" }) {
           <p className="t-note pub-foot-line">XOS1 remembers you. On your machine, not ours.</p>
         </div>
         <div>
-          <span className="pub-foot-h">XOS1</span>
-          <a href="#new">What's new</a>
+          <span className="pub-foot-h">Company</span>
+          <Link to="/careers">Careers</Link>
           <a href="#help">Support</a>
-          <a href="#data">Privacy</a>
         </div>
         <div>
           <span className="pub-foot-h">The team</span>
@@ -21,7 +21,10 @@ export default function PublicFooter({ company = "XiteAI Technologies" }) {
           <Link to="/join">Join XiteAI</Link>
         </div>
       </div>
-      <div className="entry-foot-in"><span>© {new Date().getFullYear()} {company}. All rights reserved.</span><span>XiteAI OS1</span></div>
+      <div className="entry-foot-in">
+        <span>© {new Date().getFullYear()} {company}. All rights reserved.</span>
+        <span>{version ? `XOS1 ${version}` : "XiteAI OS1"}{checkedAt ? ` · checked ${ago(checkedAt)}` : ""}</span>
+      </div>
     </footer>
   );
 }
