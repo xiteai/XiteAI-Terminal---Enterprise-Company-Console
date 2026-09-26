@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 from ...access import levels, shaping
 from ...core import clock, db, settings
+from ..installs import store as installs_store
 from ..releases.loader import version_key
 from ..requests import service as requests
 
@@ -25,17 +26,22 @@ def build(conn, a: dict, days: int, product: dict) -> dict:
     start, prev = now - timedelta(days=days), now - timedelta(days=2 * days)
     today = clock.today()
     start_iso = db.iso(start)
+    demo_sql = installs_store.demo_sql(conn)
 
     # Every install this product has, matching the demo switch: the universe
     # everything below (counts, the checkins join, "recent") draws from.
-    eligible = {r["id"]: db.strip(r) for r in conn["installs"].find({"product_id": pid, **d})}
+    eligible = {r["id"]: r for r in installs_store.rows(f"SELECT * FROM installs WHERE product_id = ?{demo_sql}", (pid,))}
     total = len(eligible)
-    active_24h = conn["installs"].count_documents(
-        {"product_id": pid, "last_seen": {"$gte": db.iso(now - timedelta(days=1))}, **d})
-    cks = list(conn["checkins"].find({"install_id": {"$in": list(eligible)}, "at": {"$gte": db.iso(prev)}}))
+    active_24h = installs_store.scalar(
+        f"SELECT COUNT(*) FROM installs WHERE product_id = ? AND last_seen >= ?{demo_sql}",
+        (pid, db.iso(now - timedelta(days=1))))
+    ids = list(eligible)
+    marks = ",".join("?" * len(ids)) if ids else "NULL"
+    cks = installs_store.rows(f"SELECT * FROM checkins WHERE install_id IN ({marks}) AND at >= ?", (*ids, db.iso(prev)))
     firsts = [r["first_seen"] for r in eligible.values() if r["first_seen"] >= db.iso(prev)]
     act = [r for r in eligible.values() if r["last_seen"] >= start_iso]
-    recent_cks = list(conn["checkins"].find({"install_id": {"$in": list(eligible)}}).sort("at", -1).limit(8))
+    recent_cks = installs_store.rows(
+        f"SELECT * FROM checkins WHERE install_id IN ({marks}) ORDER BY at DESC LIMIT 8", ids) if ids else []
     recent = [{"c_at": c["at"], "c_version": c["app_version"], **eligible[c["install_id"]]} for c in recent_cks]
 
     day_sets: dict = {}
@@ -77,6 +83,11 @@ def build(conn, a: dict, days: int, product: dict) -> dict:
             "on_latest": _share(versions.get(latest, 0), n),
             "update_ok": _share(sum(1 for r in act if r["update_state"] != "failed"), n),
             "crash_free": _share(sum(1 for r in act if not r["crash_count_7d"]), n),
+            "downloads_period": store.scalar(
+                f"SELECT COUNT(*) FROM downloads WHERE product_id = ? AND at >= ?{store.demo_sql(conn)}",
+                (pid, (today - timedelta(days=days)).isoformat())) or 0,
+            "downloads_total": store.scalar(
+                f"SELECT COUNT(*) FROM downloads WHERE product_id = ?{store.demo_sql(conn)}", (pid,)) or 0,
             "open_tickets": conn["tickets"].count_documents(
                 {"product_id": pid, "status": {"$in": ["open", "in_progress"]}, **d}),
             "urgent_tickets": conn["tickets"].count_documents({
