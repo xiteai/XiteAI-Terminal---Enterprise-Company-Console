@@ -95,6 +95,21 @@ def text(field: str, value: str, required: bool, what: str) -> str:
     return v
 
 
+_PHOTO_RE = re.compile(r"^data:image/(jpeg|jpg|png|webp);base64,")
+PHOTO_MAX_CHARS = 400_000          # a resized, compressed thumbnail comfortably fits
+
+
+def photo(value: str) -> str:
+    v = (value or "").strip()
+    if not v:
+        raise FieldError("photo", "A photo is required to join.")
+    if not _PHOTO_RE.match(v):
+        raise FieldError("photo", "That doesn't look like a photo. Try again.")
+    if len(v) > PHOTO_MAX_CHARS:
+        raise FieldError("photo", "That photo is too large. Try a smaller one.")
+    return v
+
+
 def department(value: str) -> str:
     return one_of("department", value, options.DEPARTMENTS, "a department")
 

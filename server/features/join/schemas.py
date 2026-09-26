@@ -20,6 +20,7 @@ class JoinBody(BaseModel):
     employment_type: str
     start_date: str = Field(default="", max_length=10)
     # about you
+    photo: str = Field(default="", max_length=400_100)
     dob: str = Field(max_length=10)
     gender: str = Field(default="", max_length=30)
     phone: str = Field(max_length=24)
