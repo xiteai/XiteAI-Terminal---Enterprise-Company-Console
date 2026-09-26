@@ -17,9 +17,37 @@ class PasswordBody(BaseModel):
     new: str = Field(max_length=200)
 
 
+class PhotoBody(BaseModel):
+    photo: str = Field(default="", max_length=400_100)
+
+
 @router.get("/profile")
 def my_profile(a: dict = Depends(actor)):
     return cards.full(a)
+
+
+@router.put("/photo")
+def change_photo(body: PhotoBody, a: dict = Depends(actor)):
+    """Your own photo, changed by you. Nobody needs a permission to change
+    their own face, and nobody but you can change yours — the id comes from
+    the session, never from the request."""
+    writable(a)
+    from ..join import validate as v
+
+    photo = v.photo(body.photo)          # same size and type rules as sign-up
+    with db.connect() as conn:
+        conn["staff"].update_one({"_id": a["id"]}, {"$set": {"avatar_url": photo}})
+        audit.record(conn, a, "account.photo_changed", a["email"], "", a["ip"])
+    return {"ok": True, "avatar_url": photo}
+
+
+@router.delete("/photo")
+def remove_photo(a: dict = Depends(actor)):
+    writable(a)
+    with db.connect() as conn:
+        conn["staff"].update_one({"_id": a["id"]}, {"$set": {"avatar_url": ""}})
+        audit.record(conn, a, "account.photo_removed", a["email"], "", a["ip"])
+    return {"ok": True, "avatar_url": ""}
 
 
 @router.post("/password")
