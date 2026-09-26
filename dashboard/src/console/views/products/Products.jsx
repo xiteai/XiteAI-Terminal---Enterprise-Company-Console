@@ -8,11 +8,11 @@ import PageHeader from "../../../components/PageHeader.jsx";
 import CompanyCards from "./CompanyCards.jsx";
 import NewProductModal from "./NewProductModal.jsx";
 import ProductCard from "./ProductCard.jsx";
-import "./Home.css";
+import "./Products.css";
 
-// Where the console opens: every product with its headline numbers, then the
-// company at a glance. Open a product to go inside it.
-export default function Home() {
+// Every product with its headline numbers, then the company at a glance.
+// Open a product to go inside it.
+export default function Products() {
   const { can } = useSession();
   const [creating, setCreating] = useState(false);
   const products = useData(() => api.get("/api/products"), []);
@@ -20,7 +20,7 @@ export default function Home() {
 
   return (
     <div className="stack">
-      <PageHeader title="Home">
+      <PageHeader title="Products">
         {can("products.manage") && <Button variant="primary" icon="plus" onClick={() => setCreating(true)}>New product</Button>}
       </PageHeader>
 

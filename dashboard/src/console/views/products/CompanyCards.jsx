@@ -21,7 +21,7 @@ export default function CompanyCards({ data }) {
               {waiting.map((p) => (
                 <li key={p.id}>
                   <Link to={`/console/people/requests/${p.id}`} className="home-row">
-                    <Avatar initials={p.initials} size={30} />
+                    <Avatar src={p.avatar_url} initials={p.initials} size={30} />
                     <span className="home-row-main">
                       <b>{p.display_name}{p.is_demo && <span className="demo-tag">Demo</span>}</b>
                       <span>{p.level_label} · {p.title}</span>
@@ -39,7 +39,7 @@ export default function CompanyCards({ data }) {
                 {data.recent_decisions.map((p) => (
                   <li key={`d${p.id}`}>
                     <Link to={`/console/people/${p.id}`} className="home-row">
-                      <Avatar initials={p.initials} size={30} />
+                      <Avatar src={p.avatar_url} initials={p.initials} size={30} />
                       <span className="home-row-main">
                         <b>{p.display_name}</b>
                         <span>
