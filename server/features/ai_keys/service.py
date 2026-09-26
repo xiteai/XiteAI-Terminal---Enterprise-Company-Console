@@ -9,20 +9,24 @@ import urllib.request
 
 from fastapi import HTTPException
 
-from ...core import db
+from ...core import db, vault
 from . import cloudflare
 
 # What XOS1 talks to. `secret` is the name the Worker reads; `models_url`
 # answers 200 for a working key and 401/403 for a refused one (checked).
 PROVIDERS = {
     "deepinfra": {"label": "DeepInfra", "secret": "DEEPINFRA_API_KEY", "role": "Main chat model and memory",
-                  "models_url": "https://api.deepinfra.com/v1/openai/models"},
+                  "models_url": "https://api.deepinfra.com/v1/openai/models",
+                  "chat_url": "https://api.deepinfra.com/v1/openai/chat/completions"},
     "baseten": {"label": "Baseten", "secret": "BASETEN_API_KEY", "role": "Backup chat model",
-                "models_url": "https://inference.baseten.co/v1/models"},
+                "models_url": "https://inference.baseten.co/v1/models",
+                "chat_url": "https://inference.baseten.co/v1/chat/completions"},
     "openai": {"label": "OpenAI", "secret": "OPENAI_API_KEY", "role": "Memory, first fallback",
-               "models_url": "https://api.openai.com/v1/models"},
+               "models_url": "https://api.openai.com/v1/models",
+               "chat_url": "https://api.openai.com/v1/chat/completions"},
     "cerebras": {"label": "Cerebras", "secret": "CEREBRAS_API_KEY", "role": "Memory, second fallback",
-                 "models_url": "https://api.cerebras.ai/v1/models"},
+                 "models_url": "https://api.cerebras.ai/v1/models",
+                 "chat_url": "https://api.cerebras.ai/v1/chat/completions"},
 }
 
 
@@ -66,6 +70,7 @@ def record(conn, prov: str, key: str, actor: dict, outcome: str, detail: str) ->
 
 def listing(conn) -> list[dict]:
     out = []
+    vaulted = stored_set(conn)
     for key, p in PROVIDERS.items():
         rows = [db.strip(r) for r in conn["ai_key_changes"].find({"provider": key}).sort("id", -1).limit(6)]
         names = {s["id"]: s["display_name"] for s in conn["staff"].find(
@@ -75,12 +80,45 @@ def listing(conn) -> list[dict]:
         live = next((r for r in rows if r["outcome"] == "live"), None)
         out.append({
             "key": key, "label": p["label"], "role": p["role"], "secret": p["secret"],
+            "in_vault": key in vaulted,
             "current": live and {"last4": live["last4"], "by": live["display_name"] or "someone removed",
                                  "at": live["changed_at"]},
             "history": [{"last4": r["last4"], "by": r["display_name"] or "someone removed", "at": r["changed_at"],
                          "outcome": r["outcome"], "detail": r["detail"]} for r in rows],
         })
     return out
+
+
+# ── The vault: the key lives here, so no device ever carries one ─────────────
+# Cloudflare keeps its own copy for the Worker path; this copy is what the
+# gateway uses when XOS1 asks this server to make a call on its behalf.
+
+def store(conn, prov: str, key: str, actor: dict) -> None:
+    conn["ai_secrets"].update_one({"_id": prov}, {"$set": {
+        "_id": prov, "provider": prov, "secret": vault.seal(key), "last4": key[-4:],
+        "updated_by": actor["id"], "updated_at": db.now_iso()}}, upsert=True)
+
+
+def live_key(conn, prov: str) -> str:
+    """The usable key, for the gateway only. Never returned to a device."""
+    row = conn["ai_secrets"].find_one({"_id": prov})
+    if not row:
+        raise HTTPException(503, f"No {prov} key is set on the server yet.")
+    return vault.open_(row["secret"])
+
+
+def reveal(conn, prov: str, actor: dict) -> str:
+    """The key in full, for a level allowed to see it. Every read is audited
+    by the caller — this function only opens it."""
+    row = conn["ai_secrets"].find_one({"_id": prov})
+    if not row:
+        raise HTTPException(404, "That key was set before the vault existed, or hasn't been set here yet. "
+                                 "Replace it once and it becomes readable.")
+    return vault.open_(row["secret"])
+
+
+def stored_set(conn) -> set[str]:
+    return {r["_id"] for r in conn["ai_secrets"].find({}, {"_id": 1})}
 
 
 def push(p: dict, key: str, actor: dict) -> None:
