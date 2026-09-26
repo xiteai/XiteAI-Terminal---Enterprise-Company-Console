@@ -108,3 +108,22 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
 }
+
+/* Scrollbars: present, but quiet — a chunky grey system bar cuts straight
+   across a page built out of hairlines. Overlay where the browser supports
+   it, so content never shifts when one appears. */
+* { scrollbar-width: thin; scrollbar-color: rgba(17, 17, 19, 0.18) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: rgba(17, 17, 19, 0.16); border-radius: 999px;
+  border: 3px solid transparent; background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(17, 17, 19, 0.34); background-clip: content-box; }
+*::-webkit-scrollbar-corner { background: transparent; }
+
+/* Anchor jumps and programmatic scrolls ease instead of teleporting — but
+   never for someone who has asked their system to stop animating things. */
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
