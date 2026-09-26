@@ -6,7 +6,8 @@ from __future__ import annotations
 from importlib import import_module
 
 FEATURES = ["auth", "join", "people", "requests", "access_grid", "notifications", "products", "settings", "overview", "installs",
-            "releases", "support", "audit_log", "account", "demo", "public", "checkin", "ai_keys", "code"]
+            "releases", "support", "audit_log", "account", "demo", "public", "checkin", "ai_keys", "code", "workplace", "feed",
+            "finance", "careers", "gateway"]
 
 
 def routers() -> list:
