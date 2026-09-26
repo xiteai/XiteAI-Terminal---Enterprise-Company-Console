@@ -10,14 +10,17 @@ import PageHeader from "../../../components/PageHeader.jsx";
 import Spinner from "../../../components/Spinner.jsx";
 import { useToast } from "../../../components/Toast.jsx";
 import ReplaceKey from "./ReplaceKey.jsx";
+import RevealKey from "./RevealKey.jsx";
 import "./Keys.css";
 
-// The keys every XOS1 install uses to reach its AI. They live in Cloudflare;
-// this page can replace one and never shows one.
+// The keys every XOS1 install reaches its AI through. They're kept in the
+// server's vault, encrypted, and used on the app's behalf — no installed copy
+// of XOS1 ever holds one.
 export default function Keys() {
   const toast = useToast();
   const { data, error, reload, mutate } = useData(() => api.get("/api/ai-keys"), []);
   const [editing, setEditing] = useState(null);
+  const [revealing, setRevealing] = useState(null);
 
   const history = data
     ? data.providers.flatMap((p) => p.history.map((h) => ({ ...h, label: p.label })))
@@ -27,8 +30,11 @@ export default function Keys() {
   return (
     <div>
       <PageHeader title="AI keys"
-        subtitle="The keys every XOS1 install uses to reach its AI. They're kept in Cloudflare, so they never ship inside the app. This page can replace a key, never show one."
-        meta={data && <span>Cloudflare <b>{data.cloudflare ? "connected" : "not connected"}</b></span>} />
+        subtitle="Kept encrypted in the server's vault and used on the app's behalf, so no installed copy of XOS1 ever carries one."
+        meta={data && <>
+          <span>Vault <b>{data.vault_ready ? "ready" : "not set up"}</b></span>
+          <span>Cloudflare <b>{data.cloudflare ? "connected" : "not connected"}</b></span>
+        </>} />
       <ErrorNote error={error} onRetry={reload} />
       {!data && !error && <div className="drawer-wait"><Spinner delay={300} /></div>}
       {data && !data.cloudflare && (
@@ -54,7 +60,12 @@ export default function Keys() {
                     <td>{p.current ? <span className="mono">…{p.current.last4}</span> : <span className="faint">Not replaced here yet</span>}</td>
                     <td>{p.current ? <span title={dateTime(p.current.at)}>{p.current.by}, {ago(p.current.at)}</span> : <span className="faint">–</span>}</td>
                     <td className="r">
-                      {data.can_replace && <Button size="sm" onClick={() => setEditing(p)}>Replace</Button>}
+                      <div className="wp-actions">
+                        {data.can_reveal && p.in_vault && (
+                          <Button size="sm" variant="quiet" icon="eye" onClick={() => setRevealing(p)}>Show</Button>
+                        )}
+                        {data.can_replace && <Button size="sm" onClick={() => setEditing(p)}>Replace</Button>}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -82,6 +93,7 @@ export default function Keys() {
       <ReplaceKey provider={editing} needsCode={data?.needs_code} cloudflare={data?.cloudflare}
         onClose={() => setEditing(null)}
         onDone={(r) => { setEditing(null); mutate((d) => ({ ...d, providers: r.providers })); toast(r.message); }} />
+      {revealing && <RevealKey provider={revealing} needsCode={data?.needs_code} onClose={() => setRevealing(null)} />}
     </div>
   );
 }
