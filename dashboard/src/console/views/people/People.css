@@ -25,6 +25,18 @@
 .pd-skills b { font-weight: 500; color: var(--muted); margin-right: 8px; }
 .pd-about { margin-top: 14px; padding-left: 14px; border-left: 2px solid var(--border); font-size: 0.8125rem; color: var(--text); line-height: 1.6; }
 
+.pd-promotions { list-style: none; margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.pd-promotions li { display: flex; align-items: baseline; gap: 8px; font-size: 0.8125rem; }
+.pd-promo-at { flex: none; width: 84px; color: var(--subtle); font-variant-numeric: tabular-nums; }
+.pd-promo-what { flex: 1; color: var(--ink); }
+.pd-promo-what b { color: var(--muted); font-weight: 500; }
+.pd-promo-by { flex: none; color: var(--subtle); }
+
+.pd-noboss { display: flex; align-items: center; gap: 10px; justify-content: space-between;
+  padding: 12px 14px; border: 1px solid var(--border-2); border-radius: var(--r-card); background: var(--surface-2); }
+.pd-noboss p { font-size: 0.8125rem; color: var(--text); }
+.pd-noboss b { color: var(--ink); }
+
 /* modals */
 .md-secret { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .md-secret code { flex: 1; font-family: var(--mono); font-size: 1.05rem; color: var(--ink); letter-spacing: 0.04em; }

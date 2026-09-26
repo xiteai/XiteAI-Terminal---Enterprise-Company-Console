@@ -34,7 +34,7 @@ export default function PersonDrawer({ id, onClose, onChanged }) {
       {p && (
         <>
           <div className="pd-top">
-            <Avatar initials={p.initials} level={p.level} size={44} />
+            <Avatar src={p.avatar_url} initials={p.initials} level={p.level} size={44} />
             <div className="pd-top-text">
               <b>{p.title || "No title yet"}</b>
               <span>{[p.level_label, p.employment_type, st.label !== "Active" && st.label, p.is_demo && "Demo"].filter(Boolean).join(" · ")}</span>
@@ -45,6 +45,13 @@ export default function PersonDrawer({ id, onClose, onChanged }) {
             <p className="callout"><Icon name="hourglass" size={16} />
               <span><b>Waiting for a decision.</b> {p.preferred_name} asked to join as {p.requested_label || p.level_label}. Whoever decides first settles it; everyone else is told.</span>
             </p>
+          )}
+
+          {p.status === "active" && !p.reports_to && p.level !== "founder" && p.can.manage && (
+            <div className="pd-noboss">
+              <p><b>No manager assigned.</b> {p.is_demo ? "" : "This usually means their manager was demo data that's since been cleared."}</p>
+              <Button size="sm" onClick={() => setModal("role")}>Assign</Button>
+            </div>
           )}
 
           {(p.can.approve || p.can.manage || p.can.fire || p.can.reset) && (

@@ -12,7 +12,7 @@ function Node({ node, open }) {
   return (
     <li className="org-li">
       <button className="org-node" onClick={() => open(p.id)}>
-        <Avatar initials={p.initials} level={p.level} size={30} />
+        <Avatar src={p.avatar_url} initials={p.initials} level={p.level} size={30} />
         <span className="org-text">
           <b>{p.display_name}{p.is_demo && <span className="demo-tag">Demo</span>}</b>
           <small>{p.title}{node.children.length > 0 ? ` · ${node.children.length} reporting` : ""}</small>

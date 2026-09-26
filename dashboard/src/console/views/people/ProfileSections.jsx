@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { ageFrom, ago, date } from "../../../lib/format.js";
+import { useSession } from "../../../lib/session.jsx";
 import Card from "../../../components/Card.jsx";
 import DetailList from "../../../components/DetailList.jsx";
 
@@ -21,11 +22,14 @@ function Section({ title, items, columns = 2, extra }) {
 // Everything asked at sign-up, laid out the way HR reads it. Sections the
 // viewer can't see simply don't arrive from the server.
 export default function ProfileSections({ person: p }) {
+  const { me } = useSession();
   const pr = p.profile || {};
   const age = ageFrom(pr.dob);
+  const levelLabel = (key) => me?.levels?.find((l) => l.key === key)?.label || key;
   return (
     <>
       <Section title="Work" items={[
+        { label: "Employee ID", value: p.employee_id },
         { label: "Work email", value: p.email },
         { label: "Level", value: p.level_label },
         { label: "Title", value: p.title },
@@ -72,6 +76,25 @@ export default function ProfileSections({ person: p }) {
               {pr.about && <blockquote className="pd-about">{pr.about}</blockquote>}
             </>
           )} />
+          <Section title="Payroll" items={[
+            { label: "PF number", value: p.pf_number },
+            { label: "UAN", value: p.uan_number },
+            { label: "Last promotion", value: p.last_promotion_at && day(p.last_promotion_at.slice(0, 10)) },
+          ]} extra={p.promotions?.length > 0 && (
+            <ul className="pd-promotions">
+              {[...p.promotions].reverse().map((pr, i) => (
+                <li key={i}>
+                  <span className="pd-promo-at">{day(pr.at.slice(0, 10))}</span>
+                  <span className="pd-promo-what">
+                    {pr.from_title !== pr.to_title ? `${pr.from_title} → ${pr.to_title}` : pr.to_title}
+                    {pr.from_level !== pr.to_level && <b> · {levelLabel(pr.to_level)}</b>}
+                  </span>
+                  <span className="pd-promo-by">by {pr.by_name}</span>
+                </li>
+              ))}
+            </ul>
+          )} />
+
           <Section title="Record" items={[
             { label: "Asked to join as", value: p.requested_label },
             { label: "Asked on", value: date(p.created_at) },

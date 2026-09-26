@@ -16,7 +16,8 @@ export default function ChangeRoleModal({ open, person, onClose, onDone }) {
   useEffect(() => {
     if (open && person) {
       setForm({ level: person.level, title: person.title, department: person.department,
-        employment_type: person.employment_type, reports_to: person.reports_to ? String(person.reports_to) : "" });
+        employment_type: person.employment_type, reports_to: person.reports_to ? String(person.reports_to) : "",
+        pf_number: person.pf_number || "", uan_number: person.uan_number || "" });
     }
   }, [open, person]);
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
@@ -25,6 +26,7 @@ export default function ChangeRoleModal({ open, person, onClose, onDone }) {
     const changes = {};
     ["level", "title", "department", "employment_type"].forEach((k) => { if (form[k] && form[k] !== person[k]) changes[k] = form[k]; });
     if (form.reports_to && Number(form.reports_to) !== person.reports_to) changes.reports_to = Number(form.reports_to);
+    ["pf_number", "uan_number"].forEach((k) => { if (form[k] !== (person[k] || "")) changes[k] = form[k]; });
     if (!Object.keys(changes).length) { onClose(); return; }
     setBusy(true);
     try {
@@ -47,6 +49,12 @@ export default function ChangeRoleModal({ open, person, onClose, onDone }) {
           options={bossesFor(form.level || person?.level).map((b) => ({ value: String(b.id), label: `${b.display_name} · ${b.level_label}` }))} />
       </div>
       <Field label="Title" value={form.title || ""} onChange={(e) => set("title")(e.target.value)} />
+      <div className="md-grid">
+        <Field label="PF number" hint="Optional" placeholder="MH/12345/0000001/000/0000001"
+          value={form.pf_number || ""} onChange={(e) => set("pf_number")(e.target.value)} />
+        <Field label="UAN" hint="Optional, 12 digits" placeholder="100200300400"
+          value={form.uan_number || ""} onChange={(e) => set("uan_number")(e.target.value)} />
+      </div>
     </Modal>
   );
 }

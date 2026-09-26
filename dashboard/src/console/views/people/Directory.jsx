@@ -49,7 +49,7 @@ export default function Directory() {
                     <tr key={p.id} className="row-link" tabIndex={0} onClick={() => open(p)} onKeyDown={(e) => e.key === "Enter" && open(p)}>
                       <td>
                         <span className="pp-person">
-                          <Avatar initials={p.initials} level={p.level} size={28} />
+                          <Avatar src={p.avatar_url} initials={p.initials} level={p.level} size={28} />
                           <b>{p.display_name}{p.is_demo && <span className="demo-tag">Demo</span>}</b>
                         </span>
                       </td>

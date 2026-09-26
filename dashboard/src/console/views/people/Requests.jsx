@@ -30,7 +30,7 @@ export default function Requests() {
             return (
               <li key={p.id}>
                 <button className="rq" onClick={() => open(p.id)}>
-                  <Avatar initials={p.initials} size={36} />
+                  <Avatar src={p.avatar_url} initials={p.initials} size={36} />
                   <span className="rq-main">
                     <span className="rq-name">{p.display_name}{p.is_demo && <span className="demo-tag">Demo</span>}</span>
                     <span className="rq-role">{p.title} · {p.department} · {p.employment_type}</span>
