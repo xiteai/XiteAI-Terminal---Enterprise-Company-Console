@@ -9,15 +9,26 @@ from datetime import datetime, timedelta
 from ...access import levels
 from ...core import config, db, notify
 from ...security import passwords
-from . import data as d
+from . import avatars, data as d
 
 
-def _profile(rng: random.Random, name: str, department: str, now: datetime) -> dict:
+def _birthday(rng: random.Random, now: datetime, age: int, days_away: int | None) -> str:
+    """A date of birth. `days_away` puts the birthday that many days from
+    today — a random one lands in Home's two-week window only about 4% of the
+    time, so with a team this size the birthdays strip would almost always be
+    empty and demonstrate nothing."""
+    if days_away is None:
+        return (now - timedelta(days=age * 365.25 + rng.randint(0, 364))).date().isoformat()
+    return (now.date() + timedelta(days=days_away)).replace(year=now.year - age).isoformat()
+
+
+def _profile(rng: random.Random, name: str, department: str, now: datetime,
+             birthday_in: int | None = None) -> dict:
     first = name.split()[0]
     age = rng.randint(21, 38)
     grad = now.year - (age - 22)
     return {
-        "dob": (now - timedelta(days=age * 365.25 + rng.randint(0, 364))).date().isoformat(),
+        "dob": _birthday(rng, now, age, birthday_in),
         "gender": rng.choice(["Woman", "Man", "Prefer not to say"]),
         "phone": f"+91 9{rng.randint(100000000, 999999999)}",
         "personal_email": f"{name.lower().replace(' ', '.')}@example.com",
@@ -36,9 +47,14 @@ def _profile(rng: random.Random, name: str, department: str, now: datetime) -> d
     }
 
 
+# Three of the team have a birthday inside Home's window, so the strip shows
+# what it looks like with people in it: one today, one this week, one next.
+_BIRTHDAYS_SOON = {0: 0, 2: 3, 5: 9}
+
+
 def seed(conn, rng: random.Random, now: datetime, founder_id: int | None) -> dict[str, int]:
     ids: dict[str, int] = {}
-    for name, level, dept, title, boss, status, days in d.TEAM:
+    for index, (name, level, dept, title, boss, status, days) in enumerate(d.TEAM):
         created = now - timedelta(days=days, hours=rng.randint(1, 9))
         email = f"{name.lower().replace(' ', '.')}@{config.EMAIL_DOMAIN}"
         if conn["staff"].find_one({"email": email}, {"_id": 1}):
@@ -51,7 +67,9 @@ def seed(conn, rng: random.Random, now: datetime, founder_id: int | None) -> dic
             "employment_type": "Intern" if level == "intern" else "Full-time",
             "start_date": (created + timedelta(days=7)).date().isoformat(), "password_hash": passwords.unusable_hash(),
             "reports_to": ids.get(boss, founder_id) if decided else None, "status": status, "source": "signup",
-            "profile_json": json.dumps(_profile(rng, name, dept, now)), "created_at": created.isoformat(),
+            "profile_json": json.dumps(_profile(rng, name, dept, now, _BIRTHDAYS_SOON.get(index))),
+            "avatar_url": avatars.for_name(name),
+            "created_at": created.isoformat(),
             "decided_by": founder_id if decided else None,
             "decided_at": (created + timedelta(hours=5)).isoformat() if decided else None,
             "decision_note": "Role closed after the content pilot." if status == "deactivated" else "",
