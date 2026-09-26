@@ -107,6 +107,12 @@ export const STEPS = [
     fields: [{ key: "start_date", type: "date" }],
   },
   {
+    id: "photo", section: 2, kind: "photo", key: "photo",
+    q: "Add a photo",
+    sub: "Shows on your profile and in the team directory. Required to join.",
+    validate: (a) => (a.photo ? null : { photo: "Add a photo to continue." }),
+  },
+  {
     id: "dob", section: 2, kind: "fields",
     q: "When were you born?",
     sub: "Used for HR records only.",
@@ -164,15 +170,21 @@ export const STEPS = [
     },
   },
   {
-    id: "education", section: 4, kind: "fields", optional: true,
+    id: "education", section: 4, kind: "fields",
     q: "Your education",
-    sub: "Your highest qualification.",
+    sub: "Your highest qualification. This one we do need.",
     fields: [
-      { key: "qualification", label: "Qualification", chips: "qualifications", placeholder: "e.g. Bachelor's degree", optional: true },
-      { key: "institution", label: "College or university", placeholder: "e.g. Amity University", optional: true },
-      { key: "graduation_year", label: "Year", placeholder: "e.g. 2024", inputMode: "numeric", optional: true },
+      { key: "qualification", label: "Qualification", chips: "qualifications", placeholder: "e.g. Bachelor's degree" },
+      { key: "institution", label: "College or university", placeholder: "e.g. Amity University" },
+      { key: "graduation_year", label: "Year", placeholder: "e.g. 2024", inputMode: "numeric" },
     ],
-    validate: (a) => (intIn(a.graduation_year, 1950, 2040) ? null : { graduation_year: "Use a year like 2024." }),
+    validate: (a) => {
+      const e = {};
+      if (!need(a.qualification)) e.qualification = "Add your qualification.";
+      if (!need(a.institution)) e.institution = "Add where you studied.";
+      if (!intIn(a.graduation_year, 1950, 2040)) e.graduation_year = "Use a year like 2024.";
+      return Object.keys(e).length ? e : null;
+    },
   },
   {
     id: "experience", section: 4, kind: "fields", optional: true,

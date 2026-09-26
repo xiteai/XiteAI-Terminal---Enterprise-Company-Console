@@ -8,6 +8,7 @@ import Button from "../../components/Button.jsx";
 import Icon from "../../components/Icon.jsx";
 import EntryNav from "../shared/EntryNav.jsx";
 import ChoiceList from "./ChoiceList.jsx";
+import PhotoCapture from "./PhotoCapture.jsx";
 import PillInput from "./PillInput.jsx";
 import Question from "./Question.jsx";
 import Review from "./Review.jsx";
@@ -99,7 +100,7 @@ export default function JoinPage() {
     try {
       const body = Object.fromEntries(
         ["local", "password", "full_name", "preferred_name", "level", "title", "department", "employment_type",
-          "start_date", "dob", "gender", "phone", "personal_email", "city", "address", "emergency_name",
+          "start_date", "photo", "dob", "gender", "phone", "personal_email", "city", "address", "emergency_name",
           "emergency_relation", "emergency_phone", "qualification", "institution", "graduation_year",
           "experience_years", "previous_company", "skills", "linkedin", "portfolio", "about"]
           .map((k) => [k, (answers[k] || "").toString()]),
@@ -139,6 +140,9 @@ export default function JoinPage() {
           {errors[step.key] && <p className="pill-note" role="alert">{errors[step.key]}</p>}
         </>
       );
+    }
+    if (step.kind === "photo") {
+      return <PhotoCapture value={answers.photo} onChange={(v) => set({ photo: v })} error={errors.photo} />;
     }
     const suggestions = step.suggest?.(meta, answers) || [];
     return (

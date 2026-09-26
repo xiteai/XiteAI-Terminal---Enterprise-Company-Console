@@ -15,6 +15,7 @@ function rows(a, meta) {
     [1, "Title", "title", a.title],
     [1, "Employment", "employment_type", a.employment_type],
     [1, "Starts", "start_date", a.start_date && date(`${a.start_date}T00:00:00`)],
+    [2, "Photo", "photo", a.photo && "Added"],
     [2, "Date of birth", "dob", a.dob && date(`${a.dob}T00:00:00`)],
     [2, "Gender", "gender", a.gender],
     [2, "Phone", "phone", a.phone],
