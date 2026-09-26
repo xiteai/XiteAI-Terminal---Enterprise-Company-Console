@@ -20,6 +20,13 @@ def email_available(conn, local: str) -> bool:
     return not conn["staff"].find_one({"email": email}, {"_id": 1}, collation=db.CASE_INSENSITIVE)
 
 
+def _grad_year(value: str) -> str:
+    year = v.small_int("graduation_year", value, 1950, 2040)
+    if not year:
+        raise v.FieldError("graduation_year", "Add the year you graduated.")
+    return year
+
+
 def _profile(b: JoinBody) -> dict:
     return {
         "dob": v.dob(b.dob),
@@ -34,9 +41,9 @@ def _profile(b: JoinBody) -> dict:
             "phone": v.phone("emergency_phone", b.emergency_phone),
         },
         "education": {
-            "qualification": b.qualification.strip(),
-            "institution": b.institution.strip(),
-            "graduation_year": v.small_int("graduation_year", b.graduation_year, 1950, 2040),
+            "qualification": v.text("qualification", b.qualification, True, "your highest qualification"),
+            "institution": v.text("institution", b.institution, True, "where you studied"),
+            "graduation_year": _grad_year(b.graduation_year),
         },
         "experience": {
             "years": v.small_int("experience_years", b.experience_years, 0, 60),
@@ -60,6 +67,7 @@ def submit(conn, b: JoinBody, ip: str, user_agent: str) -> tuple[int, str]:
     if not (b.agree_accurate and b.agree_storage):
         raise v.FieldError("agree", "Tick both boxes to send your request.")
     profile = _profile(b)
+    photo = v.photo(b.photo)
     department, employment = v.department(b.department), v.employment_type(b.employment_type)
     start = v.iso_date("start_date", b.start_date, False)
     email = f"{local}@{config.EMAIL_DOMAIN}"
@@ -78,8 +86,8 @@ def submit(conn, b: JoinBody, ip: str, user_agent: str) -> tuple[int, str]:
             "display_name": b.full_name.strip(), "preferred_name": b.preferred_name.strip(), "level": level,
             "requested_level": level, "title": b.title.strip(), "department": department,
             "employment_type": employment, "start_date": start, "password_hash": passwords.hash_password(b.password),
-            "status": "pending", "source": "signup", "profile_json": json.dumps(profile), "created_at": now,
-            "signup_ip": ip,
+            "status": "pending", "source": "signup", "profile_json": json.dumps(profile), "avatar_url": photo,
+            "created_at": now, "signup_ip": ip,
         })
         me = {"id": staff_id, "display_name": b.full_name.strip(), "level": level}
         audit.record(tconn, me, "join.requested", email, f"{levels.LABEL[level]} · {b.title.strip()}", ip)
