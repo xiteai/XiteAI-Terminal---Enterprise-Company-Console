@@ -32,3 +32,7 @@
 .acc-key { word-break: normal; overflow-wrap: anywhere; }   /* breaks between groups of four, not inside one */
 .acc-row { display: flex; gap: 8px; }
 @media (max-width: 640px) { .acc-setup { grid-template-columns: 1fr; } }
+
+/* Your photo: the face first, the buttons beside it. */
+.ac-photo { display: flex; align-items: center; gap: 18px; }
+.ac-photo-actions { display: flex; flex-wrap: wrap; gap: 8px; }
