@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://xos1dashboard.xiteai.com/contract/checkin.schema.json",
+  "$id": "https://xtec.xiteai.com/contract/checkin.schema.json",
   "title": "XOS1 check-in",
   "description": "What an XOS1 install sends to POST /api/v1/checkin. The request body is {payload, signature, public_key}: payload is base64 of the UTF-8 JSON below, signature is base64 of the Ed25519 signature over exactly those payload bytes, public_key is base64 of the install's 32-byte Ed25519 public key. The private key never leaves the PC (seal it with Windows DPAPI).",
   "type": "object",
