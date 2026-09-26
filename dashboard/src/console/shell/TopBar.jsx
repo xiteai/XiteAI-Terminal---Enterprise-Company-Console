@@ -2,7 +2,7 @@ import { Link, useMatch } from "react-router-dom";
 import { useSession } from "../../lib/session.jsx";
 import Icon from "../../components/Icon.jsx";
 import Bell from "./Bell.jsx";
-import { COMPANY_TITLES, productNav } from "./nav.js";
+import { COMPANY_TITLES, WORKPLACE_NAV, productNav } from "./nav.js";
 
 // Where you are, in plain words, then search and notifications.
 function Crumbs() {
@@ -22,11 +22,20 @@ function Crumbs() {
       </ol>
     );
   }
-  const title = COMPANY_TITLES[company?.params.section];
+  const section = company?.params.section;
+  const title = COMPANY_TITLES[section];
+  // The Workplace has pages under it, so it gets a third crumb of its own.
+  const page = section === "workplace"
+    && WORKPLACE_NAV.find((n) => n.to === `/console/workplace/${company.params["*"]?.split("/")[0]}`);
   return (
     <ol className="tb-crumbs">
       <li aria-current={title ? undefined : "page"}>{title ? <Link to="/console">Home</Link> : "Home"}</li>
-      {title && <li aria-current="page">{title}</li>}
+      {title && (
+        <li aria-current={page ? undefined : "page"}>
+          {page ? <Link to="/console/workplace">{title}</Link> : title}
+        </li>
+      )}
+      {page && <li aria-current="page">{page.label}</li>}
     </ol>
   );
 }
