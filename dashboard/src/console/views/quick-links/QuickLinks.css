@@ -1,0 +1,95 @@
+/* Quick Links: a calm grid of tiles, each with a drawn scene above its name.
+   Monochrome throughout — hairlines, paper and grey, with ink saved for the
+   one detail each scene is about. */
+
+.ql-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+
+.qlcard {
+  position: relative; isolation: isolate; overflow: hidden;
+  display: flex; flex-direction: column;
+  border: 1px solid var(--border); border-radius: var(--r-card); background: var(--surface);
+  transition: border-color 0.4s var(--ease), box-shadow 0.4s var(--ease), transform 0.4s var(--ease);
+}
+.qlcard:hover {
+  border-color: transparent; transform: translateY(-3px);
+  box-shadow: 0 0 0 1px rgba(17, 17, 19, 0.09), 0 2px 8px rgba(17, 17, 19, 0.04), 0 18px 40px -16px rgba(17, 17, 19, 0.2);
+}
+.qlcard:active { transform: translateY(-1px); transition-duration: 0.12s; }
+
+/* Light under the cursor. Grey, never a colour, and only while hovered. */
+.qlcard-glow {
+  position: absolute; inset: 0; z-index: -1; opacity: 0; pointer-events: none;
+  background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 50%), rgba(17, 17, 19, 0.04), transparent 72%);
+  transition: opacity 0.45s var(--ease);
+}
+.qlcard:hover .qlcard-glow { opacity: 1; }
+
+.qlcard-scene {
+  display: block; background: var(--surface-2); border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+.qlart {
+  display: block; width: 100%; height: auto;
+  transition: transform 0.6s var(--ease);
+}
+.qlcard:hover .qlart { transform: scale(1.02); }
+
+/* The scene's vocabulary: paper on grey, hairlines, one ink detail. */
+.qlart .paper { fill: var(--surface); stroke: var(--ink); stroke-width: 1.15; }
+.qlart .hair { fill: none; stroke: var(--ink); stroke-width: 1.15; }
+.qlart .hair-2 { fill: none; stroke: var(--border-2); stroke-width: 1.15; }
+.qlart .dash { fill: none; stroke: var(--border-2); stroke-width: 1.15; stroke-dasharray: 3 5; }
+.qlart .mid { fill: var(--track); }
+.qlart .mid-s { fill: var(--track); stroke: var(--ink); stroke-width: 1.15; }
+.qlart .dot { fill: var(--border-2); }
+.qlart .ink { fill: var(--ink); }
+.qlart .ink-l { fill: none; stroke: var(--ink); stroke-width: 1.6; }
+
+/* Each scene has one part that moves, and it moves quietly. */
+.qlart .float, .qlart .pop, .qlart .slide, .qlart .ink-l {
+  transform-box: fill-box; transform-origin: center;
+  transition: transform 0.6s var(--ease), opacity 0.5s var(--ease);
+}
+.qlcard:hover .qlart .float { transform: translateY(-5px); }
+.qlcard:hover .qlart .pop { transform: scale(1.05); }
+.qlcard:hover .qlart .slide { transform: translateY(7px); }
+.qlart .draw { stroke-dasharray: 190; stroke-dashoffset: 0; }
+.qlcard:hover .qlart .draw { animation: ql-draw 0.9s var(--ease); }
+
+@keyframes ql-draw {
+  from { stroke-dashoffset: 190; }
+  to { stroke-dashoffset: 0; }
+}
+
+.qlcard-foot { display: flex; align-items: center; gap: 12px; padding: 16px 18px; }
+.qlcard-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; line-height: 1.35; }
+.qlcard-body b {
+  font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.016em; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.qlcard-body span {
+  font-size: 0.78125rem; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: color 0.35s var(--ease);
+}
+.qlcard:hover .qlcard-body span { color: var(--text); }
+
+.qlcard-go {
+  flex: none; width: 17px; height: 17px; color: var(--subtle);
+  opacity: 0; transform: translateX(-7px);
+  transition: opacity 0.4s var(--ease), transform 0.5s var(--ease), color 0.35s var(--ease);
+}
+.qlcard:hover .qlcard-go { opacity: 1; transform: translateX(0); color: var(--ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  .qlcard, .qlart, .qlart .float, .qlart .pop, .qlart .slide, .qlcard-go, .qlcard-glow { transition-duration: 0.01ms; }
+  .qlcard:hover { transform: none; }
+  .qlcard:hover .qlart { transform: none; }
+  .qlcard:hover .qlart .float, .qlcard:hover .qlart .pop, .qlcard:hover .qlart .slide { transform: none; }
+  .qlcard:hover .qlart .draw { animation: none; }
+}
+
+@media (max-width: 640px) {
+  .ql-grid { grid-template-columns: 1fr; }
+  .qlcard-go { opacity: 1; transform: none; }
+}
