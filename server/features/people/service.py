@@ -57,6 +57,10 @@ def check_reports_to(conn, reports_to: int, level: str) -> None:
         raise HTTPException(400, "They must report to someone at a higher level.")
 
 
+_PF_RE = re.compile(r"^[A-Z]{2}/[A-Z0-9]{3,7}/\d{1,7}/\d{3,7}/\d{7}$|^$")
+_UAN_RE = re.compile(r"^\d{12}$|^$")
+
+
 def update(conn, a: dict, staff_id: int, changes: dict) -> dict:
     row = get(conn, staff_id)
     _guard(a, row, "people.manage")
@@ -73,9 +77,26 @@ def update(conn, a: dict, staff_id: int, changes: dict) -> dict:
         check_reports_to(conn, changes.get("reports_to") or row["reports_to"] or a["id"], new_level)
     if "title" in changes:
         changes["title"] = changes["title"].strip()
+    if "pf_number" in changes:
+        changes["pf_number"] = changes["pf_number"].strip().upper()
+        if not _PF_RE.match(changes["pf_number"]):
+            raise HTTPException(400, "That doesn't look like a PF number (format: AA/BBB/0000000/000/0000000).")
+    if "uan_number" in changes:
+        changes["uan_number"] = changes["uan_number"].strip()
+        if not _UAN_RE.match(changes["uan_number"]):
+            raise HTTPException(400, "A UAN is 12 digits.")
     if not changes:
         raise HTTPException(400, "Nothing to change.")
-    conn["staff"].update_one({"_id": staff_id}, {"$set": changes})
+
+    promoted = (("level" in changes and changes["level"] != row["level"])
+               or ("title" in changes and changes["title"] != row["title"]))
+    update_doc = {"$set": changes}
+    if promoted:
+        update_doc["$push"] = {"promotions": {
+            "at": db.now_iso(), "from_level": row["level"], "to_level": new_level,
+            "from_title": row["title"], "to_title": changes.get("title", row["title"]),
+            "by": a["id"], "by_name": a["display_name"]}}
+    conn["staff"].update_one({"_id": staff_id}, update_doc)
     audit.record(conn, a, "person.updated", row["email"], ", ".join(f"{k}={v}" for k, v in changes.items()), a["ip"])
     if "level" in changes and changes["level"] != row["level"]:
         notify.send(conn, [staff_id], "person.level",
