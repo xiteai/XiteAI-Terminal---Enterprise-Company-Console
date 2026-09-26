@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from ...core import audit, config, db, notify
+from ...core import audit, config, db, notify, vault
 from ...security import lockout, mfa, passwords
 from ...web.deps import require, writable
 from . import cloudflare, service
@@ -26,7 +26,40 @@ def keys(a: dict = Depends(require("keys.view"))):
     with db.connect() as conn:
         return {"providers": service.listing(conn), "cloudflare": cloudflare.connected(),
                 "can_replace": "keys.replace" in a["perms"] and not a["previewing"],
+                "can_reveal": "keys.reveal" in a["perms"] and not a["previewing"],
+                "vault_ready": vault.ready(),
                 "needs_code": _needs_code(a)}
+
+
+@router.post("/{prov}/reveal")
+def reveal(prov: str, body: KeyBody, a: dict = Depends(require("keys.reveal"))):
+    """The whole key, for a level allowed to read it. Password again (and the
+    founder's code), rate-limited like a sign-in, and every read is logged with
+    who read it — a key nobody can account for reading isn't a secret."""
+    writable(a)
+    p = service.provider(prov)
+    gate = f"keys-reveal:{a['email']}"
+    with db.connect() as conn:
+        if lockout.locked(conn, gate, a["ip"]):
+            raise HTTPException(429, f"Too many wrong passwords. Try again in {config.LOCKOUT_WINDOW_MIN} minutes.")
+        if not passwords.verify_password(body.password, a["password_hash"]):
+            lockout.record(conn, gate, a["ip"], False)
+            audit.record(conn, a, "ai_key.reveal_denied", p["label"], "wrong password", a["ip"])
+            raise HTTPException(400, "Your password isn't right.")
+        if _needs_code(a) and not mfa.check(a, body.code):
+            lockout.record(conn, gate, a["ip"], False)
+            raise HTTPException(400, "That code didn't work. Codes change every 30 seconds.")
+        lockout.record(conn, gate, a["ip"], True)
+        try:
+            key = service.reveal(conn, prov, a)
+        except vault.VaultError as e:
+            raise HTTPException(503, str(e))
+        audit.record(conn, a, "ai_key.revealed", p["label"], f"read …{key[-4:]} in full", a["ip"])
+        founders = conn["staff"].distinct("id", {"level": "founder", "status": "active", "is_demo": False})
+        if a["level"] != "founder":
+            notify.send(conn, founders, "ai_key", f"{a['display_name']} read the {p['label']} key",
+                        f"In full, ending …{key[-4:]}.", "/console/keys")
+    return {"key": key}
 
 
 @router.post("/{prov}/test")
@@ -57,17 +90,20 @@ def replace(prov: str, body: KeyBody, a: dict = Depends(require("keys.replace"))
             lockout.record(conn, gate, a["ip"], False)
             raise HTTPException(400, "That code didn't work. Codes change every 30 seconds.")
         lockout.record(conn, gate, a["ip"], True)
-    if not cloudflare.connected():
-        raise HTTPException(409, "Cloudflare isn't connected yet, so there's nowhere safe to put the key. "
-                                 "You can still test it.")
+    if not vault.ready() and not cloudflare.connected():
+        raise HTTPException(409, "Neither the vault nor Cloudflare is set up, so there's nowhere safe to put the "
+                                 "key. Set TC_VAULT_KEY. You can still test it.")
     ok, sentence = service.test(p, key)
     if not ok:
         with db.connect() as conn:
             service.record(conn, prov, key, a, "refused", sentence)
             audit.record(conn, a, "ai_key.refused", p["label"], f"…{key[-4:]}: {sentence}", a["ip"])
         raise HTTPException(400, sentence + " Nothing changed for users.")
-    service.push(p, key, a)
+    if cloudflare.connected():
+        service.push(p, key, a)
     with db.connect() as conn:
+        if vault.ready():
+            service.store(conn, prov, key, a)     # the gateway uses this copy; no device ever gets one
         service.record(conn, prov, key, a, "live", sentence)
         audit.record(conn, a, "ai_key.replaced", p["label"], f"now …{key[-4:]}", a["ip"])
         if a["level"] != "founder":
