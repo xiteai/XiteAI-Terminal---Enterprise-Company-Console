@@ -9,14 +9,18 @@ import random
 from datetime import datetime, timezone
 
 from ...core import audit, db, settings
+from ..code import store as code_store
+from ..installs import store as installs_store
 from ..products import service as products
+from ..workplace import store as workplace_store
 from . import data as d
-from . import installs, team, tickets
+from . import careers, feed, finance, installs, team, tickets, workplace
 
 
 def present(conn) -> bool:
-    return bool(conn["installs"].find_one({"is_demo": True}, {"_id": 1})
-               or conn["staff"].find_one({"is_demo": True}, {"_id": 1}))
+    return bool(installs_store.scalar("SELECT 1 FROM installs WHERE is_demo = 1")
+               or conn["staff"].find_one({"is_demo": True}, {"_id": 1})
+               or workplace.present())
 
 
 def _chat_product(conn, now: datetime) -> int:
@@ -51,10 +55,16 @@ def load(conn) -> dict:
                  + tickets.seed(conn, rng, now, chat, chat_codes, d.CHAT_TICKETS))
     ids = team.seed(conn, rng, now, founder)
     team.assign(conn, now, founder, {products.DEFAULT: xos1, d.CHAT["slug"]: chat}, ids)
+    n_workplace = workplace.seed(conn, rng, now, ids)
+    n_feed = feed.seed(conn, rng, now, founder)
+    n_finance = (finance.seed(conn, rng, now, xos1, founder, "os1")
+                 + finance.seed(conn, rng, now, chat, founder, "chat"))
+    n_careers = careers.seed(conn, rng, now, founder)
     settings.put(conn, "demo_deleted", "0")
     settings.put(conn, "show_demo", "1")
     out = {"installs": len(codes) + len(chat_codes), "checkins": n_checkins + n_chat,
-           "tickets": n_tickets, "people": len(ids)}
+           "tickets": n_tickets, "people": len(ids), "workplace": n_workplace, "feed": n_feed,
+           "finance": n_finance, "careers": n_careers}
     audit.record(conn, None, "demo.loaded", "", ", ".join(f"{v} {k}" for k, v in out.items()))
     return out
 
@@ -68,13 +78,20 @@ def purge(conn) -> dict:
         conn["staff"].update_many({"reports_to": {"$in": demo_people}, "is_demo": False},
                                   {"$set": {"reports_to": None}})
         conn["tickets"].update_many({"assignee_id": {"$in": demo_people}}, {"$set": {"assignee_id": None}})
+        code_store.forget_people(demo_people)             # their Codebase grants and roles, kept in SQLite
+        workplace_store.forget_people(demo_people)        # what they filed in the Workplace, likewise
     out = {
-        "installs": conn["installs"].delete_many({"is_demo": True}).deleted_count,
+        "installs": installs_store.run("DELETE FROM installs WHERE is_demo = 1").rowcount,
         "tickets": conn["tickets"].delete_many({"is_demo": True}).deleted_count,
         "people": conn["staff"].delete_many({"is_demo": True}).deleted_count,
+        "feed": feed.purge(conn),
+        "finance": finance.purge(conn),
+        "careers": careers.purge(conn),
+        **workplace.purge(),
     }
     # A demo product only goes if nothing real has landed in it.
-    used = set(conn["installs"].distinct("product_id")) | set(conn["tickets"].distinct("product_id"))
+    used = ({r["product_id"] for r in installs_store.rows("SELECT DISTINCT product_id FROM installs")}
+           | set(conn["tickets"].distinct("product_id")))
     out["products"] = conn["products"].delete_many({"is_demo": True, "id": {"$nin": list(used)}}).deleted_count
     settings.put(conn, "demo_deleted", "1")
     return out
